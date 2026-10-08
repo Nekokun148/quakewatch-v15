@@ -1,0 +1,17 @@
+{
+  "Control": { "DateTime": "2026-10-07T07:05:47Z", "Status": "通常" },
+  "Head": { "EventID": "20261007160305", "ReportDateTime": "2026-10-07T16:05:00+09:00", "InfoType": "発表" },
+  "Body": {
+    "Earthquake": {
+      "OriginTime": "2026-10-07T16:02:00+09:00",
+      "ArrivalTime": "2026-10-07T16:03:00+09:00",
+      "Hypocenter": { "Area": { "Name": "奄美大島北東沖", "Coordinate": "+29.7+130.5-60000/" } },
+      "Magnitude": "3.5"
+    },
+    "Intensity": { "Observation": { "MaxInt": "1", "Pref": [
+      { "Name": "鹿児島県", "Area": [{ "City": [{ "IntensityStation": [
+        { "Name": "鹿児島十島村中之島徳之尾", "Code": "4630401", "Int": "1", "latlon": { "lat": 29.84, "lon": 129.87 } }
+      ] }] }] }
+    ] } }
+  }
+}

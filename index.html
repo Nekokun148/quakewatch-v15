@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="全国の地震情報をリアルタイム表示する V15">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+  <title>全国リアルタイム地震ビューア V15</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>全国リアルタイム地震ビューア <span>V15</span></h1>
+      <time id="currentTime" class="current-time" aria-label="現在時刻 日本時間"></time>
+      <p id="status">接続準備中…</p>
+    </div>
+    <div class="controls">
+      <div class="alarm-control">
+        <div class="alarm-actions">
+          <label class="alarm-toggle"><input id="alarmToggle" type="checkbox">警報音</label>
+          <button id="alarmTest" type="button">警報音テスト</button>
+        </div>
+        <p id="alarmStatus" role="status">警報音 OFF</p>
+      </div>
+      <div class="location-control">
+        <button id="locationToggle" type="button" aria-pressed="false">現在地 OFF</button>
+        <p id="locationStatus" class="location-status" role="status">現在地 OFF</p>
+      </div>
+      <div class="speech-control">
+        <div class="speech-actions">
+          <button id="speechToggle" type="button" aria-pressed="false">🔇 読み上げ OFF</button>
+          <button id="speechTest" type="button">音声テスト</button>
+        </div>
+        <label class="speech-voice" for="speechVoice">
+          <span>読み上げの声</span>
+          <select id="speechVoice" disabled><option value="">自動選択（日本語）</option></select>
+        </label>
+        <p id="speechStatus" class="speech-status" role="status" aria-live="polite">停止中</p>
+      </div>
+      <button id="reconnect" type="button">再接続</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="map-panel">
+      <section id="strongMonitor" class="map-toolbar" aria-labelledby="strongMonitorHeading">
+        <div class="monitor-heading">
+          <h2 id="strongMonitorHeading">全国の揺れ</h2>
+          <span id="monitorStatus" role="status">待機中</span>
+        </div>
+        <div class="monitor-tabs" role="tablist" aria-label="全国地図の観測指標">
+          <button id="viewIntensity" type="button" role="tab" aria-selected="true" aria-controls="monitorDisplay">リアルタイム震度</button>
+          <button id="viewAcceleration" type="button" role="tab" aria-selected="false" aria-controls="monitorDisplay" tabindex="-1">最大加速度</button>
+        </div>
+        <div class="monitor-caption">
+          <strong id="monitorTitle">リアルタイム震度（地表・目安）</strong>
+          <time id="monitorTime">観測画像未受信</time>
+        </div>
+      </section>
+      <div id="monitorDisplay" class="map-stage" role="tabpanel" aria-labelledby="viewIntensity">
+        <div id="map" aria-label="日本全国のリアルタイム震度・最大加速度・地震情報の統合地図"></div>
+        <img id="monitorScale" class="monitor-scale" alt="防災科研公式の観測指標スケール" width="55" height="301" hidden>
+      </div>
+      <div class="map-source">
+        <span id="monitorCoverage">観測画像の色：未受信</span>
+        <a href="http://www.kmoni.bosai.go.jp/" target="_blank" rel="noopener noreferrer">防災科研 強震モニタ</a>
+        <a href="https://www.kyoshin.bosai.go.jp/ja/about_kmoni/" target="_blank" rel="noopener noreferrer">利用条件</a>
+      </div>
+      <div class="legend">
+        <span><i class="dot land-station"></i>未受信</span>
+        <span><i class="dot sea-station"></i>海底観測点（未受信）</span>
+        <span>発表震度：</span>
+        <span><i class="dot intensity-1"></i>震度1</span>
+        <span><i class="dot intensity-2"></i>2</span>
+        <span><i class="dot intensity-3"></i>3</span>
+        <span><i class="dot intensity-4"></i>4</span>
+        <span><i class="dot intensity-5"></i>5弱</span>
+        <span><i class="dot intensity-5-upper"></i>5強</span>
+        <span><i class="dot intensity-6"></i>6弱</span>
+        <span><i class="dot intensity-6-upper"></i>6強</span>
+        <span><i class="dot intensity-7"></i>7</span>
+        <span><i class="dot epicenter"></i>震源</span>
+        <span><i class="dot p-wave"></i>P波到達予測</span>
+        <span><i class="dot s-wave"></i>S波到達予測</span>
+        <span><i class="dot eew"></i>緊急地震速報</span>
+        <span><i class="dot sensing"></i>全国感知ネット</span>
+        <span><i class="dot current-location-dot"></i>現在地</span>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <section class="card hero-card">
+        <div id="reportStage" class="label">現在の状態</div>
+        <div id="headline">地震情報を待機中</div>
+        <div id="headlineSub" class="muted">日本全国の情報を監視しています</div>
+      </section>
+
+      <section id="eewCard" class="card" hidden>
+        <h2>直近の緊急地震速報</h2>
+        <div id="eewDetails" class="details"></div>
+        <div id="eewRegions" class="region-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>揺れを観測した地域</h2>
+        <p id="observationMeta" class="muted">観測震度を待機中</p>
+        <div id="regionSummary" class="region-summary-list"></div>
+        <div id="regions" class="region-list"><div class="muted">まだありません</div></div>
+        <p id="observationFeedStatus" class="muted" role="status">観測震度を取得中</p>
+      </section>
+
+      <section class="card" id="quakeCard">
+        <div class="section-heading">
+          <h2>最新地震</h2>
+          <button id="readLatest" type="button" aria-label="最新地震を読み上げ" title="最新地震を読み上げ" disabled>読み上げ</button>
+        </div>
+        <div id="quakeDetails" class="details muted">待機中</div>
+      </section>
+
+      <section class="card">
+        <h2>揺れの報告</h2>
+        <div id="sensingReports" class="region-list"><div class="muted">まだありません</div></div>
+        <p id="sensingStatus" class="muted">利用者の報告・震度未確定</p>
+      </section>
+
+      <section class="card small">
+        <h2>データ経路</h2>
+        <ul>
+          <li>P2P地震情報 WebSocket</li>
+          <li>気象庁 地震情報</li>
+          <li>気象庁 観測震度・観測点座標</li>
+          <li>防災科研 強震モニタ公式画像</li>
+          <li>緊急地震速報（EEW）</li>
+          <li>地震感知情報（全国ネット）</li>
+        </ul>
+        <p class="notice">※小さい色付き点は強震モニタ画像の色です。白枠の大きい点は気象庁の発表震度です。</p>
+        <p class="notice">※画像から正確な数値や地震発生は判定しません。灰色・海底の輪は観測値未受信です。</p>
+        <p class="notice">※J-SHISは地震ハザード・地盤情報であり、現在の観測値とは別の情報です。</p>
+        <p class="notice">※P波/S波は受信した震源情報からの到達予測表示です。</p>
+        <p class="notice">※端末の加速度センサーは地震検出に使用しません。</p>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="js/data.js"></script>
+  <script src="js/stations.js"></script>
+  <script src="js/app.js" type="module"></script>
+</body>
+</html>

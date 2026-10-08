@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QuakeWatch Local Receive Tests</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+  button { padding: 8px; }
+  iframe { width: 100%; height: calc(100vh - 58px); border: 0; }
+</style>
+<nav>
+  <select id="viewport" aria-label="表示幅"><option value="100%">標準表示</option><option value="390px">モバイル390px</option></select>
+  <button id="weak" disabled>震度1受信テスト</button>
+  <button id="sensing" disabled>揺れ報告テスト</button>
+  <button id="duplicate" disabled>同じ報告を再受信</button>
+  <button id="unknown" disabled>地域不明の報告</button>
+  <button id="colors" disabled>観測点の色変更テスト</button>
+  <button id="sameQuake" disabled>同じ地震のP2P情報</button>
+  <button id="older" disabled>古い観測情報</button>
+  <button id="eewForecast" disabled>EEW予報テスト</button>
+  <button id="eewWarning" disabled>EEW警報・PLUMテスト</button>
+  <button id="eewFinal" disabled>EEW最終報テスト</button>
+  <button id="eewCancel" disabled>EEW取消テスト</button>
+</nav>
+<output id="result" aria-live="polite"></output>
+<iframe src="../index.html" title="QuakeWatch"></iframe>
+<script type="module">
+  import { parseReportTime } from '../js/observations.js';
+  const frame = document.querySelector('iframe');
+  const enableTests = () => {
+    if (frame.contentWindow.__quakeWatchV15) document.querySelectorAll('nav button').forEach(button => { button.disabled = false; });
+  };
+  frame.addEventListener('load', enableTests);
+  enableTests();
+  document.querySelector('#viewport').onchange = event => { frame.style.width = event.target.value; };
+  let report;
+  let testQuake;
+  let issueTime = 0;
+  let colorStep = 0;
+  let eew;
+  let serial = 0;
+  const receive = data => frame.contentWindow.__quakeWatchV15.onData(data);
+  const nextTime = () => {
+    const current = frame.contentWindow.__quakeWatchV15.state.latestQuake;
+    issueTime = Math.max(Date.now(), issueTime, parseReportTime(current?.issue?.time)) + 1000;
+    return new Date(issueTime).toISOString();
+  };
+  const showResult = () => {
+    const state = frame.contentWindow.__quakeWatchV15.state;
+    const layers = state.observationLayer?.getLayers() || [];
+    document.querySelector('#result').textContent = `表示中の観測点: ${layers.length} / 色: ${layers.map(layer => layer.options.fillColor).join(', ')} / ${state.latestQuake?.earthquake.hypocenter.name}`;
+  };
+  document.querySelector('#weak').onclick = () => receive({
+    id: `test-weak-${Date.now()}`, code: 551,
+    issue: { time: nextTime() },
+    earthquake: {
+      time: new Date().toISOString(), maxScale: 10,
+      hypocenter: { name: '受信テスト 東京湾', latitude: 35.55, longitude: 139.85, magnitude: 2.1, depth: 10 }
+    },
+    points: [{ pref: '東京都', addr: '千代田区（テスト）', scale: 10 }]
+  });
+  document.querySelector('#sensing').onclick = () => {
+    report = { id: `test-sensing-${Date.now()}`, code: 561, time: new Date().toISOString(), area: 200 };
+    receive(report);
+  };
+  document.querySelector('#duplicate').onclick = () => { if (report) receive(report); };
+  document.querySelector('#unknown').onclick = () => receive({
+    id: `test-unknown-${Date.now()}`, code: 561, time: new Date().toISOString(), area: 901
+  });
+  document.querySelector('#colors').onclick = () => {
+    colorStep++;
+    const time = nextTime();
+    const high = colorStep % 2 === 0;
+    testQuake = {
+      id: `test-colors-${colorStep}-${Date.now()}`, code: 551, issue: { time },
+      earthquake: {
+        time, maxScale: high ? 40 : 20,
+        hypocenter: { name: '色変更テスト 東京湾', latitude: 35.55, longitude: 139.85, magnitude: 3.1, depth: 10 }
+      },
+      points: [
+        { code: 'test-tokyo', pref: '東京都', addr: '東京テスト観測点', scale: high ? 40 : 10, latitude: 35.68, longitude: 139.76 },
+        { code: 'test-miyagi', pref: '宮城県', addr: '宮城テスト観測点', scale: high ? 30 : 20, latitude: 38.26, longitude: 140.88 }
+      ]
+    };
+    receive(testQuake);
+    showResult();
+  };
+  document.querySelector('#sameQuake').onclick = () => {
+    if (!testQuake) return;
+    const duplicate = structuredClone(testQuake);
+    duplicate.id += '-p2p';
+    duplicate.points.forEach(point => { delete point.latitude; delete point.longitude; });
+    receive(duplicate);
+    showResult();
+  };
+  document.querySelector('#older').onclick = () => {
+    if (!testQuake) return;
+    const older = structuredClone(testQuake);
+    older.id += '-older';
+    older.issue.time = new Date(issueTime - 60000).toISOString();
+    older.earthquake.hypocenter.name = '古い情報（表示されない）';
+    older.points = [];
+    receive(older);
+    showResult();
+  };
+  function receiveEew(extra = {}) {
+    eew ||= { eventId: `browser-test-eew-${Date.now()}` };
+    const time = new Date().toISOString();
+    receive({
+      id: `browser-test-eew-${++serial}`, code: 556,
+      issue: { ...eew, serial: String(serial), time },
+      earthquake: { originTime: time, hypocenter: { name: '受信テスト 東京湾', latitude: 35.55, longitude: 139.85 } },
+      areas: [
+        { pref: '東京都', name: '東京テスト地域', scaleFrom: 40, scaleTo: 40, kindCode: extra.isWarning === false ? '09' : '19' },
+        { pref: '千葉県', name: '千葉テスト地域', scaleFrom: 30, scaleTo: 30, kindCode: '10' },
+        { pref: '神奈川県', name: '神奈川テスト地域', scaleFrom: 20, scaleTo: 20, kindCode: '10' },
+        { pref: '埼玉県', name: '埼玉テスト地域', scaleFrom: 10, scaleTo: 10, kindCode: '10' }
+      ], ...extra
+    });
+  }
+  document.querySelector('#eewForecast').onclick = () => { eew = null; serial = 0; receiveEew({ isWarning: false }); };
+  document.querySelector('#eewWarning').onclick = () => receiveEew({ isWarning: true });
+  document.querySelector('#eewFinal').onclick = () => receiveEew({ isWarning: true, isFinal: true });
+  document.querySelector('#eewCancel').onclick = () => receiveEew({ cancelled: true, earthquake: undefined });
+</script>
+</html>
