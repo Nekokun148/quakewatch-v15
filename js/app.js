@@ -1,5 +1,5 @@
 import { createSpeechController, quakeAnnouncement, eewAnnouncement } from './speech.js';
-import { createVoicevoxEnvironment } from './voicevox.js';
+import { createVoicevoxEnvironment, createVoicevoxPreference } from './voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
 import { createLocationController } from './location.js';
@@ -152,6 +152,13 @@ const voicevox = createVoicevoxEnvironment({ environment: window, onStatus: info
   $('voicevoxStatus').dataset.phase = info.phase;
 } });
 const speech = createSpeechController({ environment: voicevox.environment, onStatus: updateSpeechUi });
+const voicevoxPreference = createVoicevoxPreference({ voicevox, speech, environment: window,
+  isEnabled: () => state.speech,
+  onPreference(preferred) {
+    $('voicevoxPrefer').checked = preferred;
+    document.body.dataset.qwVoicevoxPreferred = String(preferred);
+  }
+});
 const alarmAnnouncer = createAlarmAnnouncer({ alarm, speech });
 
 function rememberAnnouncement(text) {
@@ -838,26 +845,36 @@ $('locationToggle').addEventListener('click', () => {
 });
 
 $('speechToggle').addEventListener('click', () => {
-  if (state.speech) speech.disable();
-  else if (speech.enable()) speech.say('地震情報の読み上げを開始します。', { interrupt: true });
+  if (state.speech) { voicevoxPreference.cancelPending(); speech.disable(); }
+  else if (speech.enable()) {
+    void voicevoxPreference.prepare();
+    speech.say('地震情報の読み上げを開始します。', { interrupt: true });
+  }
 });
 
 $('speechTest').addEventListener('click', () => {
-  if (speech.enable()) speech.say('読み上げのテストです。日本語の音声を確認しています。', { interrupt: true });
+  if (speech.enable()) {
+    void voicevoxPreference.prepare();
+    speech.say('読み上げのテストです。日本語の音声を確認しています。', { interrupt: true });
+  }
 });
 
 $('speechVoice').addEventListener('change', event => {
-  speech.setVoice(event.target.value);
+  voicevoxPreference.selectVoice(event.target.value);
 });
 
-$('voicevoxConnect').addEventListener('click', () => { void voicevox.connect(); });
-$('browserSpeech').addEventListener('click', () => { speech.setVoice(''); });
-try {
-  if (localStorage.getItem('qwSpeechVoice')?.startsWith('voicevox:')) void voicevox.connect();
-} catch {}
+$('voicevoxConnect').addEventListener('click', () => { void voicevoxPreference.connect(); });
+$('browserSpeech').addEventListener('click', () => { voicevoxPreference.setPreferred(false); });
+$('voicevoxPrefer').addEventListener('change', event => {
+  voicevoxPreference.setPreferred(event.target.checked);
+  if (state.speech) void voicevoxPreference.prepare();
+});
 
 $('readLatest').addEventListener('click', () => {
-  if (state.lastAnnouncement && speech.enable()) speech.say(state.lastAnnouncement, { interrupt: true });
+  if (state.lastAnnouncement && speech.enable()) {
+    void voicevoxPreference.prepare();
+    speech.say(state.lastAnnouncement, { interrupt: true });
+  }
 });
 
 $('reconnect').addEventListener('click', () => { wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); void yditsFeed.start(); });

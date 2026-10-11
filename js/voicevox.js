@@ -20,6 +20,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
   let connecting = null;
   let serial = 0;
   let active = null;
+  let browserFallback = false;
   const notify = () => listeners.forEach(listener => listener());
   const fetcher = environment.fetch?.bind(environment);
 
@@ -29,23 +30,34 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       onStatus({ phase: 'error', message: 'このブラウザではVOICEVOXを利用できません' });
       return false;
     }
-    onStatus({ phase: 'connecting', message: 'VOICEVOXへ接続中（このPC）' });
+    onStatus({ phase: 'connecting', message: 'VOICEVOXへ接続中（この端末）' });
     const controller = new AbortController();
-    const timer = environment.setTimeout(() => controller.abort(), 5000);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = environment.setTimeout(() => { controller.abort(); reject(new Error('Discovery timeout')); }, 5000);
+    });
     connecting = Promise.resolve().then(async () => {
       try {
-        const response = await fetcher(`${VOICEVOX_BASE}/speakers`, { signal: controller.signal, cache: 'no-store', redirect: 'error' });
-        if (!response.ok) throw new Error('speakers');
-        const next = voicevoxVoices(await response.json());
-        if (!next.length) throw new Error('No talk styles');
+        const next = await Promise.race([Promise.resolve().then(async () => {
+          const response = await fetcher(`${VOICEVOX_BASE}/speakers`, {
+            signal: controller.signal, cache: 'no-store', redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer'
+          });
+          if (!response.ok) throw new Error('speakers');
+          const found = voicevoxVoices(await response.json());
+          if (!found.length) throw new Error('No talk styles');
+          return found;
+        }), timeout]);
+        if (controller.signal.aborted) throw new Error('Discovery cancelled');
         voices = next;
         notify();
-        onStatus({ phase: 'ready', message: `VOICEVOX接続済み・${voices.length}音声（このPC）` });
+        onStatus({ phase: 'ready', message: `VOICEVOX接続済み・${voices.length}音声（この端末）` });
         return true;
       } catch {
         voices = [];
         notify();
-        onStatus({ phase: 'error', message: 'VOICEVOXへ接続できません。起動状態・ブラウザの接続許可を確認してください' });
+        onStatus({ phase: 'error', message: browserSupported
+          ? 'VOICEVOX接続不可・ブラウザ標準を使用（エンジン未起動／接続許可など）'
+          : 'VOICEVOX接続不可・ブラウザ標準も未対応' });
         return false;
       } finally {
         environment.clearTimeout(timer);
@@ -62,8 +74,9 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       record.audio.onerror = null;
       record.audio.pause();
       record.audio.removeAttribute('src');
+      record.audio = null;
     }
-    if (record.url) environment.URL.revokeObjectURL(record.url);
+    if (record.url) { environment.URL.revokeObjectURL(record.url); record.url = null; }
   }
 
   function cancel() {
@@ -82,13 +95,30 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     else record.utterance.onend?.();
   }
 
+  function speakBrowser(record) {
+    if (!browserSupported) { settle(record, 'synthesis-unavailable'); return; }
+    const utterance = record.utterance;
+    const nativeUtterance = new environment.SpeechSynthesisUtterance(utterance.text);
+    for (const key of ['lang', 'rate', 'pitch', 'volume']) nativeUtterance[key] = utterance[key];
+    if (utterance.voice?.voiceURI?.startsWith('voicevox:')) {
+      const japanese = native.getVoices().filter(voice => /^ja(?:[-_]|$)/i.test(voice.lang));
+      nativeUtterance.voice = japanese.find(voice => voice.localService && voice.default)
+        || japanese.find(voice => voice.localService) || japanese.find(voice => voice.default) || japanese[0] || null;
+    } else if (utterance.voice) nativeUtterance.voice = utterance.voice;
+    nativeUtterance.onstart = () => { if (active === record) utterance.onstart?.(); };
+    nativeUtterance.onend = () => settle(record);
+    nativeUtterance.onerror = event => settle(record, event.error);
+    try { native.speak(nativeUtterance); } catch { settle(record, 'synthesis-unavailable'); }
+  }
+
   async function speakLocal(record) {
     const utterance = record.utterance;
     const speaker = Number(utterance.voice.voiceURI.slice('voicevox:'.length));
     if (!Number.isInteger(speaker) || speaker < 0) { settle(record, 'voice-unavailable'); return; }
     const controller = new AbortController();
     record.controller = controller;
-    const options = { method: 'POST', signal: controller.signal, cache: 'no-store', redirect: 'error' };
+    const options = { method: 'POST', signal: controller.signal, cache: 'no-store', redirect: 'error',
+      credentials: 'omit', referrerPolicy: 'no-referrer' };
     try {
       const queryUrl = new URL(`${VOICEVOX_BASE}/audio_query`);
       queryUrl.searchParams.set('text', utterance.text);
@@ -114,7 +144,14 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       await audio.play();
       if (active === record) utterance.onstart?.();
     } catch (error) {
-      if (active === record) settle(record, error.name === 'NotAllowedError' ? 'not-allowed' : 'network');
+      if (active !== record) return;
+      if (browserFallback && browserSupported && error.name !== 'NotAllowedError') {
+        dispose(record);
+        voices = [];
+        notify();
+        onStatus({ phase: 'fallback', message: 'VOICEVOX合成失敗・ブラウザ標準で読み上げを継続' });
+        speakBrowser(record);
+      } else settle(record, error.name === 'NotAllowedError' ? 'not-allowed' : 'network');
     }
   }
 
@@ -143,14 +180,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
         void speakLocal(record);
         return;
       }
-      if (!browserSupported) { settle(record, 'synthesis-unavailable'); return; }
-      const nativeUtterance = new environment.SpeechSynthesisUtterance(utterance.text);
-      for (const key of ['lang', 'rate', 'pitch', 'volume']) nativeUtterance[key] = utterance[key];
-      if (utterance.voice) nativeUtterance.voice = utterance.voice;
-      nativeUtterance.onstart = () => { if (active === record) utterance.onstart?.(); };
-      nativeUtterance.onend = () => settle(record);
-      nativeUtterance.onerror = event => settle(record, event.error);
-      native.speak(nativeUtterance);
+      speakBrowser(record);
     }
   };
   native?.addEventListener('voiceschanged', notify);
@@ -163,6 +193,54 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     setTimeout: environment.setTimeout.bind(environment),
     clearTimeout: environment.clearTimeout.bind(environment)
   };
-  onStatus({ phase: 'off', message: 'VOICEVOX未接続（このPC）' });
-  return { environment: adapted, connect };
+  onStatus({ phase: 'off', message: 'VOICEVOX未接続（この端末）' });
+  return { environment: adapted, connect, setBrowserFallback(value) { browserFallback = Boolean(value); } };
+}
+
+export function createVoicevoxPreference({ voicevox, speech, environment = window,
+  isEnabled = () => false, onPreference = () => {} }) {
+  const storageKey = 'qwPreferVoicevox';
+  let preferred = true, revision = 0, attempted = false, pending = null;
+  try {
+    const saved = environment.localStorage?.getItem(storageKey);
+    const savedVoice = environment.localStorage?.getItem('qwSpeechVoice');
+    if (saved === 'true' || saved === 'false') preferred = saved === 'true';
+    else if (savedVoice != null && !savedVoice.startsWith('voicevox:')) preferred = false;
+  } catch {}
+  const report = () => { voicevox.setBrowserFallback(preferred); onPreference(preferred); };
+  function setPreferred(value, { resetVoice = true } = {}) {
+    revision++;
+    attempted = false;
+    preferred = Boolean(value);
+    try { environment.localStorage?.setItem(storageKey, String(preferred)); } catch {}
+    if (!preferred && resetVoice) speech.setVoice('');
+    report();
+  }
+  function prepare({ force = false, allowWhileOff = false } = {}) {
+    if (!preferred || (!allowWhileOff && !isEnabled())) return Promise.resolve(false);
+    if (pending?.revision === revision) return pending.promise;
+    if (attempted && !force) return Promise.resolve(false);
+    attempted = true;
+    const current = revision;
+    const promise = voicevox.connect().then(ready => {
+      if (!ready || !preferred || current !== revision || (!allowWhileOff && !isEnabled())) return false;
+      const voices = voicevox.environment.speechSynthesis.getVoices().filter(voice => voice.voiceURI?.startsWith('voicevox:'));
+      let saved;
+      try { saved = environment.localStorage?.getItem('qwSpeechVoice'); } catch {}
+      const voice = voices.find(item => item.voiceURI === saved) || voices[0];
+      return Boolean(voice && speech.setVoice(voice.voiceURI));
+    }).finally(() => { if (pending?.promise === promise) pending = null; });
+    pending = { revision: current, promise };
+    return promise;
+  }
+  report();
+  return { prepare, setPreferred,
+    selectVoice(id) {
+      if (!speech.setVoice(id)) return false;
+      setPreferred(id.startsWith('voicevox:'), { resetVoice: false });
+      return true;
+    },
+    connect() { setPreferred(true); return prepare({ force: true, allowWhileOff: true }); },
+    cancelPending() { revision++; attempted = false; }
+  };
 }

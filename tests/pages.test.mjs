@@ -81,7 +81,7 @@ test('speech voice menu is labelled and connected without starting playback on s
   assert.match(html, /<select id="speechVoice" disabled>/);
   assert.match(html, /<option value="">自動選択（日本語）<\/option>/);
   const app = await readFile(new URL('js/app.js', root), 'utf8');
-  assert.match(app, /\$\('speechVoice'\)\.addEventListener\('change', event => \{\s*speech\.setVoice\(event\.target\.value\);\s*\}\);/);
+  assert.match(app, /\$\('speechVoice'\)\.addEventListener\('change', event => \{\s*voicevoxPreference\.selectVoice\(event\.target\.value\);\s*\}\);/);
 });
 
 function workerHarness({ offline = false } = {}) {
