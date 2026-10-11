@@ -1,16 +1,18 @@
 import { createSpeechController, quakeAnnouncement, eewAnnouncement } from './speech.js';
+import { createVoicevoxEnvironment } from './voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
 import { createLocationController } from './location.js';
-import { measuredPoints, observedRegions, acceptsQuakeReport, sameQuakeReport, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
+import { measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeReport, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
+import { renderObservationRegions } from './observation-ui.js';
 import { createStrongMotionController } from './strong-motion.js';
-import { createAlarmController } from './alarm.js';
+import { createAlarmController, createAlarmAnnouncer } from './alarm.js';
 import { createEEWTracker } from './eew.js';
 import { matchMonitorPoints, frameColors, UNRECEIVED_COLOR } from './monitor-map.js';
+import { createMonitorChangeTracker } from './monitor-changes.js';
+import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
+import { createWolfxFeed } from './wolfx.js';
 import { animateWaves } from './waves.js';
-
-const P2P_WS = 'wss://api.p2pquake.net/v2/ws';
-const P2P_HISTORY = 'https://api.p2pquake.net/v2/history';
 
 const state = {
   ws: null,
@@ -22,6 +24,7 @@ const state = {
   locationLayer: null,
   observationLayer: null,
   latestQuake: null,
+  latestObservation: null,
   bannerTime: 0,
   seen: new Set(),
   leafletMap: null,
@@ -55,15 +58,22 @@ function updateTopbarHeight() {
 updateTopbarHeight();
 if ('ResizeObserver' in window) new ResizeObserver(updateTopbarHeight).observe(topbar);
 const scaleText = s => ({ 10:'1', 20:'2', 30:'3', 40:'4', 45:'5弱', 50:'5強', 55:'6弱', 60:'6強', 70:'7' })[Number(s)] ?? '不明';
-const scaleNum = s => Number(s) || 0;
 const receiveEEW = createEEWTracker();
-const alarm = createAlarmController({ onStatus(info) {
+const alarm = createAlarmController({ soundUrl: null, onStatus(info) {
   $('alarmToggle').checked = info.enabled;
   $('alarmToggle').disabled = !info.supported;
   $('alarmTest').disabled = !info.supported;
   $('alarmStatus').textContent = info.error || ({ off: '警報音 OFF', armed: '警報音 ON', playing: '警報音を再生中', unsupported: '警報音 未対応' })[info.phase];
+  if (!info.error && info.supported) {
+    $('alarmStatus').textContent += info.assetWarning ? ` / ${info.assetWarning}`
+      : info.source === 'file' ? ` / 指定MP3・${info.duration.toFixed(1)}秒`
+      : info.assetPhase === 'none' ? ''
+      : info.assetPhase === 'loading' ? ' / MP3読込中（既存音で待機）' : ' / 指定MP3はON時に準備';
+  }
   document.body.dataset.qwAlarm = info.phase;
   document.body.dataset.qwAlarmPlayed = String(info.played);
+  document.body.dataset.qwAlarmSource = info.source;
+  document.body.dataset.qwAlarmAsset = info.assetPhase;
 } });
 function setEventColor(element, scale) {
   element.style.setProperty('--intensity-color', intensityColor(scale) || '#aebbd0');
@@ -100,6 +110,7 @@ function updateSpeechUi(info) {
   $('speechToggle').setAttribute('aria-pressed', String(info.enabled));
   $('speechToggle').disabled = !info.supported;
   $('speechTest').disabled = !info.supported;
+  $('browserSpeech').disabled = !window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== 'function';
   $('readLatest').disabled = !info.supported || !state.lastAnnouncement;
   const select = $('speechVoice');
   const optionsKey = JSON.stringify([info.voices, info.preferredVoice]);
@@ -135,7 +146,13 @@ function updateSpeechUi(info) {
   document.body.dataset.qwSpeechCompleted = String(info.completed);
 }
 
-const speech = createSpeechController({ environment: window, onStatus: updateSpeechUi });
+const voicevox = createVoicevoxEnvironment({ environment: window, onStatus: info => {
+  $('voicevoxConnect').disabled = info.phase === 'connecting';
+  $('voicevoxStatus').textContent = info.message;
+  $('voicevoxStatus').dataset.phase = info.phase;
+} });
+const speech = createSpeechController({ environment: voicevox.environment, onStatus: updateSpeechUi });
+const alarmAnnouncer = createAlarmAnnouncer({ alarm, speech });
 
 function rememberAnnouncement(text) {
   state.lastAnnouncement = text;
@@ -210,6 +227,10 @@ function escapeHtml(s) {
 }
 
 function addMarker(pos, title, kind = 'quake') {
+  if (kind === 'quake' || kind === 'eew') {
+    state.markerLayer?.clearLayers();
+    if (state.localMap) state.localMap.markerLayer.innerHTML = '';
+  }
   if (!pos) return;
   if (state.leafletMap && window.L) {
     addLeafletMarker(pos, title, kind);
@@ -225,8 +246,8 @@ function addLeafletMarker(pos, title, kind = 'quake') {
     const icon = L.divIcon({
       className: '',
       html: '<span class="quake-cross-icon" aria-hidden="true"></span>',
-      iconSize: [44, 44],
-      iconAnchor: [22, 22]
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
     });
     layer = L.marker(leafletLatLng(pos), { icon, title, zIndexOffset: 1000 });
   } else {
@@ -240,7 +261,7 @@ function addLeafletMarker(pos, title, kind = 'quake') {
   }
   layer.addTo(state.markerLayer);
   updateDiagnostics();
-  setTimeout(() => state.markerLayer?.removeLayer(layer), 20 * 60 * 1000);
+  if (kind === 'sensing') setTimeout(() => state.markerLayer?.removeLayer(layer), 20 * 60 * 1000);
 }
 
 function addLocalMarker(pos, title, kind = 'quake') {
@@ -249,18 +270,17 @@ function addLocalMarker(pos, title, kind = 'quake') {
   const marker = makeSvgElement('g', { 'aria-label': title });
   if (kind === 'quake') {
     marker.appendChild(makeSvgElement('path', {
-      d: `M${p.x - 12} ${p.y - 12} L${p.x + 12} ${p.y + 12} M${p.x + 12} ${p.y - 12} L${p.x - 12} ${p.y + 12}`,
+      d: `M${p.x - 6} ${p.y - 6} L${p.x + 6} ${p.y + 6} M${p.x + 6} ${p.y - 6} L${p.x - 6} ${p.y + 6}`,
       stroke: '#fff',
-      'stroke-width': '9',
-      'stroke-linecap': 'round'
-    }));
-    marker.appendChild(makeSvgElement('path', {
-      d: `M${p.x - 12} ${p.y - 12} L${p.x + 12} ${p.y + 12} M${p.x + 12} ${p.y - 12} L${p.x - 12} ${p.y + 12}`,
-      stroke: '#ff2f21',
       'stroke-width': '5',
       'stroke-linecap': 'round'
     }));
-    marker.appendChild(makeSvgElement('circle', { cx: p.x, cy: p.y, r: 6, class: 'quake-marker' }));
+    marker.appendChild(makeSvgElement('path', {
+      d: `M${p.x - 6} ${p.y - 6} L${p.x + 6} ${p.y + 6} M${p.x + 6} ${p.y - 6} L${p.x - 6} ${p.y + 6}`,
+      stroke: '#ff2f21',
+      'stroke-width': '3',
+      'stroke-linecap': 'round'
+    }));
   } else {
     marker.appendChild(makeSvgElement('circle', {
       cx: p.x,
@@ -271,7 +291,7 @@ function addLocalMarker(pos, title, kind = 'quake') {
   }
   state.localMap.markerLayer.appendChild(marker);
   updateDiagnostics();
-  setTimeout(() => marker.remove(), 20 * 60 * 1000);
+  if (kind === 'sensing') setTimeout(() => marker.remove(), 20 * 60 * 1000);
 }
 
 function buildObservationStations() {
@@ -387,7 +407,7 @@ function renderLocalMap() {
   ];
   for (const shape of landShapes) svg.appendChild(makeSvgElement('path', { d: localPath(shape), class: 'land' }));
 
-  svg.appendChild(makeSvgElement('text', { x: 28, y: 42, class: 'label' })).textContent = 'QuakeWatch V15';
+  svg.appendChild(makeSvgElement('text', { x: 28, y: 42, class: 'label' })).textContent = '地震監視Web';
   svg.appendChild(makeSvgElement('text', { x: 28, y: 70, class: 'note' })).textContent = 'Leafletを読み込めないため簡易地図で表示中';
 
   const waveLayer = makeSvgElement('g');
@@ -471,34 +491,12 @@ function startLocalWaveAnimation(pos, originTimeRaw) {
   updateDiagnostics();
 }
 
-function renderRegions(points = []) {
-  const list = $('regions');
-  list.innerHTML = '';
-  const grouped = new Map();
-  for (const p of points) {
-    const key = `${p.pref} ${p.addr}`;
-    const old = grouped.get(key);
-    if (!old || scaleNum(p.scale) > scaleNum(old.scale)) grouped.set(key, p);
-  }
-  const rows = [...grouped.values()].sort((a, b) => scaleNum(b.scale) - scaleNum(a.scale)).slice(0, 80);
-  if (!rows.length) {
-    list.innerHTML = '<div class="muted">まだありません</div>';
-    return;
-  }
-  for (const p of rows) {
-    const el = document.createElement('div');
-    el.className = 'region';
-    el.innerHTML = `<span>${escapeHtml(p.pref)} ${escapeHtml(p.addr)}</span><span class="scale">震度${scaleText(p.scale)}</span>`;
-    list.appendChild(el);
-  }
-}
-
 function renderObservations(data) {
   const measured = measuredPoints(data.points);
   state.observationLayer?.clearLayers();
   if (state.localMap) state.localMap.observationLayer.innerHTML = '';
   for (const point of measured) {
-    const title = `${point.pref} ${point.addr} / 観測震度${scaleText(point.scale)} / ${displayObservationTime(data.earthquake.time)}`;
+    const title = `${point.pref} ${point.addr} / 観測震度${scaleText(point.scale)} / ${displayObservationTime(data.earthquake?.time)}`;
     if (state.observationLayer && window.L) {
       window.L.circleMarker([point.lat, point.lng], {
         pane: 'observationPane', radius: 6, color: '#fff', weight: 1.4,
@@ -511,20 +509,34 @@ function renderObservations(data) {
       state.localMap.observationLayer.appendChild(circle);
     }
   }
-  const summaries = observedRegions(data.points);
-  const summary = $('regionSummary');
-  summary.innerHTML = '';
-  for (const region of summaries) {
-    const row = document.createElement('div');
-    row.className = 'region-summary';
-    row.textContent = `${region.name} / 最大震度${scaleText(region.scale)} / ${region.count}地点${region.areaCount ? `・${region.areaCount}地域` : ''}`;
-    summary.appendChild(row);
-  }
-  const valid = summaries.reduce((count, region) => count + region.count, 0);
-  $('observationMeta').textContent = `${displayObservationTime(data.earthquake.time)} / ${summaries.length}都道府県 / 地図${measured.length}地点${valid > measured.length ? `・位置未確認${valid - measured.length}地点` : ''}`;
-  document.body.dataset.qwObservationTime = data.earthquake.time || '';
-  document.body.dataset.qwObservationRegions = String(summaries.length);
+  renderObservationRegions(data, { document, scaleText, measuredCount: measured.length });
   updateDiagnostics();
+}
+
+const quakeHistory = [];
+function rememberQuake(d) {
+  const index = quakeHistory.findIndex(previous => previous.earthquake?.time && previous.earthquake.time === d.earthquake?.time && previous.earthquake.hypocenter?.name === d.earthquake.hypocenter?.name);
+  if (index >= 0) quakeHistory.splice(index, 1);
+  quakeHistory.unshift(d);
+  quakeHistory.length = Math.min(quakeHistory.length, 50);
+  const list = $('quakeHistory');
+  if (!list) return;
+  list.replaceChildren();
+  for (const report of quakeHistory) {
+    const q = report.earthquake || {}, h = q.hypocenter || {};
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${displayObservationTime(q.time)} / ${h.name || '震源不明'} / 震度${scaleText(q.maxScale)}`;
+    button.addEventListener('click', () => {
+      clearWaveTimers();
+      state.waveLayer?.clearLayers();
+      if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+      addMarker(findLatLng(h), `履歴：${h.name || '震源不明'}`, 'quake');
+      $('quakeHistorySelection').textContent = `履歴表示：${displayObservationTime(q.time)} / ${h.name || '震源不明'} / M${h.magnitude ?? '-'} / 深さ${h.depth ?? '-'}km`;
+    });
+    list.appendChild(button);
+  }
+  $('quakeHistorySelection').textContent = '最新の震源を表示';
 }
 
 function handleQuake(d, options = {}) {
@@ -537,6 +549,7 @@ function handleQuake(d, options = {}) {
   if (!acceptsQuakeReport(state.latestQuake, d)) return;
   const sameReport = sameQuakeReport(state.latestQuake, d);
   state.latestQuake = d;
+  rememberQuake(d);
   const max = q.maxScale;
   const title = `${h.name || '地震'} / 最大震度 ${scaleText(max)}`;
   if (quakeReportTime(d) >= state.bannerTime) {
@@ -548,11 +561,11 @@ function handleQuake(d, options = {}) {
   }
   setEventColor($('quakeCard'), max);
   $('quakeDetails').innerHTML = `震源：<span class="event-location">${escapeHtml(h.name || '不明')}</span><br>発生：${escapeHtml(displayObservationTime(q.time))}<br>規模：M${escapeHtml(h.magnitude ?? '-')} / 深さ ${escapeHtml(h.depth ?? '-')} km<br>最大震度：<span class="forecast-scale">${scaleText(max)}</span>`;
-  renderRegions(d.points || []);
-  renderObservations(d);
+  state.latestObservation = selectObservationReport(state.latestObservation, d);
+  renderObservations(state.latestObservation);
   const pos = findLatLng(h);
-  if (!sameReport) addMarker(pos, title, 'quake');
-  if (!options.silent && !sameReport) startWaveAnimation(pos, q.time || d.time);
+  addMarker(pos, title, 'quake');
+  if ((!options.silent || options.animateWaves === true) && !sameReport) startWaveAnimation(pos, q.time || d.time);
   const text = quakeAnnouncement(d, scaleText);
   rememberAnnouncement(text);
   if (!options.silent && !sameReport) {
@@ -570,9 +583,11 @@ function handleEEW(d, options = {}) {
   const h = e.hypocenter || {};
   $('eewCard').hidden = false;
   setEventColor($('eewCard'), info.cancelled ? -1 : info.maxScale);
-  const maximum = `${scaleText(info.maxScale)}${info.maxAbove ? '以上' : ''}`;
-  $('eewDetails').innerHTML = `${escapeHtml(info.stage)}<br>震源：<span class="event-location">${escapeHtml(h.name || '情報なし')}</span><br>発表：${escapeHtml(displayObservationTime(d.issue?.time || d.time))}<br>予想最大震度：<span class="forecast-scale">${info.cancelled ? '取消' : maximum}</span>${!info.cancelled && info.plum ? '<br>PLUM法による予想を含む' : ''}`;
+  const maximum = `${info.maxScale === 0 ? '0' : scaleText(info.maxScale)}${info.maxAbove ? '以上' : ''}`;
+  $('eewDetails').innerHTML = `${d.source === 'YDITS' ? 'YDITS / ' : ''}${escapeHtml(info.stage)}<br>震源：<span class="event-location">${escapeHtml(h.name || '情報なし')}</span><br>発表：${escapeHtml(displayObservationTime(d.issue?.time || d.time))}<br>予想最大震度：<span class="forecast-scale">${info.cancelled ? '取消' : maximum}</span>${!info.cancelled && info.plum ? '<br>PLUM法による予想を含む' : ''}${e.assumed ? '<br>仮定震源要素・規模と深さは未確定' : ''}${d.unmatchedCancel ? '<br>取消の対象地震は未確認' : ''}`;
   $('eewRegions').innerHTML = '';
+  if (d.source === 'Wolfx') $('eewDetails').innerHTML = 'Wolfx / ' + $('eewDetails').innerHTML;
+  if (d.source === 'DMDATA') $('eewDetails').innerHTML = 'DMDATA / ' + $('eewDetails').innerHTML;
   if (!info.cancelled) for (const area of info.areas) {
     const row = document.createElement('div');
     row.className = 'region forecast-region';
@@ -580,29 +595,40 @@ function handleEEW(d, options = {}) {
     row.innerHTML = `<span>${escapeHtml(area.pref || '')} ${escapeHtml(area.name || '')}${area.plum ? '<br>PLUM法' : ''}</span><span class="forecast-scale">予想 ${scaleText(area.scale)}${area.above ? '以上' : ''}</span>`;
     $('eewRegions').appendChild(row);
   }
-  if (info.time >= state.bannerTime) {
+  if (info.time >= state.bannerTime && !d.unmatchedCancel && !info.training) {
     state.bannerTime = info.time;
     $('headline').textContent = info.cancelled ? '緊急地震速報 取消' : `${h.name || '緊急地震速報'} / 予想最大震度 ${maximum}`;
-    $('headlineSub').textContent = `${displayObservationTime(d.issue?.time || d.time)}${info.cancelled ? '' : ` / ${info.areas.length}地域${info.plum ? ' / PLUM法' : ''}`}`;
+    $('headlineSub').textContent = `${displayObservationTime(d.issue?.time || d.time)}${info.cancelled ? '' : info.areas.length ? ` / ${info.areas.length}地域${info.plum ? ' / PLUM法' : ''}` : ' / 地域別予測未受信'}`;
     $('reportStage').textContent = info.stage;
     setEventColor(document.querySelector('.hero-card'), info.cancelled ? -1 : info.maxScale);
   }
   if (info.cancelled) {
-    alarm.stop();
-    clearWaveTimers();
-    state.waveLayer?.clearLayers();
-    if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+    if (!options.silent && !info.training && !d.unmatchedCancel) {
+      alarmAnnouncer.cancel();
+      clearWaveTimers();
+      state.waveLayer?.clearLayers();
+      if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+    }
+    $('eewWaveStatus').textContent = 'P/S表示：取消';
   } else {
     const pos = findLatLng(h);
     addMarker(pos, `緊急地震速報 ${info.stage}`, 'eew');
-    if (!options.silent && !info.plum) startWaveAnimation(pos, e.originTime || e.time || d.time);
+    if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || (d.source === 'DMDATA' && (!e.originTime || info.plum || e.assumed))) && !options.silent && !info.training) {
+      clearWaveTimers();
+      state.waveLayer?.clearLayers();
+      if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+    }
+    $('eewWaveStatus').textContent = info.plum ? 'P/S表示：PLUM・到達時刻未確定'
+      : e.assumed ? 'P/S表示：仮定震源要素・未確定'
+      : d.source === 'DMDATA' && !e.originTime ? 'P/S表示：発生時刻未受信'
+      : !pos ? 'P/S表示：震源座標未受信' : 'P/S表示：受信震源からの簡易到達予測';
+    if (!options.silent && !info.training && pos && !info.plum && !e.assumed && (d.source !== 'DMDATA' || e.originTime)) startWaveAnimation(pos, e.originTime || e.time || d.time);
   }
   const text = eewAnnouncement(d);
   rememberAnnouncement(text);
-  if (received.sound) alarm.play();
-  if (!options.silent && !info.training) {
+  if (!options.silent && !info.training && !d.unmatchedCancel) {
     showToast(text);
-    speech.say(text, { interrupt: true });
+    alarmAnnouncer.announce(text, { sound: received.sound });
   }
 }
 
@@ -664,7 +690,7 @@ function onData(d, options = {}) {
         state.seen.add(d.id || d.time);
         showToast('緊急地震速報の発表を検出しました。続報に注意してください。');
         const time = quakeReportTime(d);
-        if (time && Math.abs(Date.now() - time) <= 120000) alarm.play();
+        if (time && Math.abs(Date.now() - time) <= 120000) alarmAnnouncer.announce('', { sound: true });
       }
       break;
     case 561:
@@ -675,57 +701,6 @@ function onData(d, options = {}) {
       break;
   }
   updateDiagnostics();
-}
-
-async function loadHistory() {
-  try {
-    const url = `${P2P_HISTORY}?codes=551&codes=556&codes=561&limit=20`;
-    const r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    const raw = await r.json();
-    const data = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
-    for (const d of data.reverse()) onData(d, { silent: true });
-  } catch (e) {
-    console.warn('history', e);
-  }
-}
-
-function connect() {
-  clearTimeout(state.reconnectTimer);
-  if (state.ws) {
-    try {
-      state.ws.close();
-    } catch {}
-  }
-  $('status').textContent = 'P2P地震情報へ接続中…';
-  const ws = new WebSocket(P2P_WS);
-  state.ws = ws;
-  ws.onopen = () => {
-    if (state.ws !== ws) return;
-    $('status').textContent = '🟢 全国リアルタイム監視中';
-    showToast('全国リアルタイム監視に接続しました。');
-    updateDiagnostics();
-    loadHistory();
-  };
-  ws.onmessage = e => {
-    if (state.ws !== ws) return;
-    try {
-      onData(JSON.parse(e.data));
-    } catch (err) {
-      console.warn(err);
-    }
-  };
-  ws.onerror = () => {
-    if (state.ws !== ws) return;
-    $('status').textContent = '🟠 接続エラー（再接続します）';
-    updateDiagnostics();
-  };
-  ws.onclose = () => {
-    if (state.ws !== ws) return;
-    $('status').textContent = '🟠 切断。5秒後に再接続';
-    updateDiagnostics();
-    state.reconnectTimer = setTimeout(connect, 5000);
-  };
 }
 
 function fitJapanView() {
@@ -875,19 +850,45 @@ $('speechVoice').addEventListener('change', event => {
   speech.setVoice(event.target.value);
 });
 
+$('voicevoxConnect').addEventListener('click', () => { void voicevox.connect(); });
+$('browserSpeech').addEventListener('click', () => { speech.setVoice(''); });
+try {
+  if (localStorage.getItem('qwSpeechVoice')?.startsWith('voicevox:')) void voicevox.connect();
+} catch {}
+
 $('readLatest').addEventListener('click', () => {
   if (state.lastAnnouncement && speech.enable()) speech.say(state.lastAnnouncement, { interrupt: true });
 });
 
-$('reconnect').addEventListener('click', connect);
+$('reconnect').addEventListener('click', () => { wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); void yditsFeed.start(); });
 $('alarmToggle').addEventListener('change', async () => {
   if ($('alarmToggle').checked) await alarm.enable();
-  else alarm.disable();
+  else {
+    alarmAnnouncer.cancel();
+    alarm.disable();
+  }
 });
 $('alarmTest').addEventListener('click', async () => {
-  if (await alarm.enable()) alarm.play();
+  if (await alarm.enable()) alarmAnnouncer.announce('', { sound: true });
 });
 let monitorFrames = 0;
+const monitorChanges = createMonitorChangeTracker();
+function renderMonitorChanges(result) {
+  const text = result.phase === 'baseline' ? '画像色の変化：比較用の初回画像'
+    : result.phase === 'delayed' ? '画像色の変化：配信遅延・比較待機'
+    : `画像色の変化：${result.codes.length}地点 / 地震・震源未確定`;
+  $('monitorChangeStatus').textContent = text;
+  $('monitorChangeStatus').dataset.phase = result.phase;
+  document.body.dataset.qwMonitorChanges = String(result.codes.length);
+  const rows = result.codes.map(code => {
+    const station = stationCircles.get(code)?.station;
+    const row = document.createElement('div');
+    row.className = 'region';
+    row.textContent = station ? `${station.pref === '-' ? '' : station.pref} ${station.name} (${code}) / 画像色の変化` : code;
+    return row;
+  });
+  $('monitorChangedStations').replaceChildren(...rows);
+}
 const strongMotion = createStrongMotionController({
   apiBase: document.body.dataset.kmoniApiBase || 'api/strong-motion/',
   async onFrame(frame) {
@@ -900,6 +901,7 @@ const strongMotion = createStrongMotionController({
     const colors = frameColors(context.getImageData(0, 0, canvas.width, canvas.height), monitorPoints);
     if (frame.metric !== monitorMetric) return;
     if (!state.leafletMap) throw new Error('Live monitor requires geographic map');
+    renderMonitorChanges(monitorChanges.receive({ colors, metric: frame.metric, observedAt: frame.observedAt }));
     monitorObservation = frame;
     let received = 0;
     for (const [code, color] of colors) {
@@ -925,6 +927,12 @@ const strongMotion = createStrongMotionController({
     $('monitorStatus').dataset.phase = phase;
     document.body.dataset.qwMonitor = phase;
     $('monitorDisplay').dataset.phase = phase;
+    if (['loading', 'error', 'unavailable', 'delayed'].includes(phase)) {
+      monitorChanges.reset();
+      $('monitorChangeStatus').textContent = '画像色の変化：取得・比較待機 / 地震・震源未確定';
+      $('monitorChangedStations').replaceChildren();
+      document.body.dataset.qwMonitorChanges = '0';
+    }
   }
 });
 let monitorMetric;
@@ -940,6 +948,7 @@ function selectMonitorMetric(mode) {
   }
   document.body.dataset.qwMonitorMetric = mode;
   resetMonitorColors();
+  monitorChanges.reset();
   monitorObservation = null;
   $('monitorScale').hidden = true;
   $('monitorCoverage').textContent = '観測画像の色：未受信';
@@ -970,7 +979,37 @@ selectMonitorMetric('intensity');
 let autoLocation = true;
 try { autoLocation = localStorage.getItem('qwLocationEnabled') !== 'false'; } catch {}
 if (autoLocation) locationControl.start();
-connect();
+const adaptYdits = createYditsEEWAdapter();
+let wolfxActive = false;
+let wolfxStatus = 'Wolfx / 接続準備';
+const wolfxFeed = createWolfxFeed({
+  onData(report, options) { if (wolfxActive) onData(report, options); },
+  onStatus(info) {
+    wolfxStatus = info.text;
+    $('wolfxFeedStatus').textContent = info.text;
+    $('wolfxFeedStatus').dataset.phase = info.phase;
+    document.body.dataset.qwWolfx = info.phase;
+    if (wolfxActive) { $('status').textContent = info.text; updateDiagnostics(); }
+  }
+});
+const yditsFeed = createYditsFeed({
+  onData(snapshot) {
+    document.body.dataset.qwYditsActive = String(snapshot.active);
+    const report = adaptYdits(snapshot);
+    if (report) onData(report, { silent: snapshot.stale || snapshot.training });
+  },
+  onStatus(info) {
+    if (info.phase === 'live') { wolfxActive = false; wolfxFeed.stop(); }
+    if (info.phase === 'error' && info.server === 3 && !wolfxActive) { wolfxActive = true; wolfxFeed.start(); }
+    $('status').textContent = wolfxActive ? wolfxStatus : info.text;
+    $('yditsFeedStatus').textContent = info.text;
+    $('yditsFeedStatus').dataset.phase = info.phase;
+    document.body.dataset.qwYdits = info.phase;
+    document.body.dataset.qwYditsServer = String(info.server);
+    updateDiagnostics();
+  }
+});
+void yditsFeed.start();
 const observationFeed = createObservationFeed({
   onData: (data, options) => onData(data, options),
   onStatus(phase, text) {

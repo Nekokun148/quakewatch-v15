@@ -7,6 +7,7 @@ export function createSpeechController({ environment = window, onStatus = () => 
   const synth = environment.speechSynthesis;
   const supported = Boolean(synth && typeof environment.SpeechSynthesisUtterance === 'function');
   let enabled = false;
+  let held = false;
   let phase = supported ? 'off' : 'unsupported';
   let error = '';
   let voice = null;
@@ -42,11 +43,12 @@ export function createSpeechController({ environment = window, onStatus = () => 
   function refreshVoice() {
     const voices = supported ? synth.getVoices() : [];
     japanese = voices.filter(v => /^ja(?:[-_]|$)/i.test(v.lang));
+    const browserVoices = japanese.filter(v => !voiceId(v).startsWith('voicevox:'));
     voice = japanese.find(v => voiceId(v) === preferredVoice)
-      || japanese.find(v => v.localService && v.default)
-      || japanese.find(v => v.localService)
-      || japanese.find(v => v.default)
-      || japanese[0]
+      || browserVoices.find(v => v.localService && v.default)
+      || browserVoices.find(v => v.localService)
+      || browserVoices.find(v => v.default)
+      || browserVoices[0]
       || null;
     report();
   }
@@ -80,7 +82,7 @@ export function createSpeechController({ environment = window, onStatus = () => 
   }
 
   function playNext() {
-    if (!enabled || active || !queue.length) return;
+    if (!enabled || held || active || !queue.length) return;
     refreshVoice();
     const utterance = new environment.SpeechSynthesisUtterance(queue.shift());
     utterance.lang = 'ja-JP';
@@ -141,6 +143,22 @@ export function createSpeechController({ environment = window, onStatus = () => 
     report();
   }
 
+  function stop() {
+    clearPlayback();
+    phase = enabled ? 'ready' : error ? 'error' : supported ? 'off' : 'unsupported';
+    report();
+  }
+
+  function hold() {
+    held = true;
+    stop();
+  }
+
+  function release() {
+    held = false;
+    playNext();
+  }
+
   function say(text, { interrupt = false } = {}) {
     if (!enabled || !supported || !text) return false;
     if (interrupt) clearPlayback();
@@ -160,7 +178,7 @@ export function createSpeechController({ environment = window, onStatus = () => 
   } else {
     report();
   }
-  return { enable, disable, say, setVoice };
+  return { enable, disable, say, setVoice, stop, hold, release };
 }
 
 export function quakeAnnouncement(data, scaleText) {

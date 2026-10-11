@@ -3,8 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PUBLIC_FILES = [
+  'js/wolfx.js',
   'index.html', 'manifest.json', 'sw.js', 'css/style.css', 'icons/icon.svg',
-  'js/app.js', 'js/observations.js', 'js/strong-motion.js', 'js/monitor-map.js', 'js/waves.js', 'js/eew.js', 'js/alarm.js', 'js/speech.js', 'js/location.js',
+  'js/app.js', 'js/observations.js', 'js/observation-ui.js', 'js/strong-motion.js', 'js/monitor-map.js', 'js/monitor-changes.js', 'js/ydits.js', 'js/waves.js', 'js/eew.js', 'js/alarm.js', 'js/speech.js', 'js/voicevox.js', 'js/location.js',
   'js/data.js', 'js/stations.js', 'js/seafloor-stations.js', 'js/sensing-areas.js',
   'data/basemap.geojson', 'data/monitor-points.json', 'THIRD_PARTY_NOTICES.md'
 ];

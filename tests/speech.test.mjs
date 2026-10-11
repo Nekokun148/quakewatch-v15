@@ -36,6 +36,23 @@ function harness(initialVoices = [], localStorage) {
   };
 }
 
+test('browser default excludes optional VOICEVOX and switching does not enable or play speech', () => {
+  const browser = { voiceURI: 'browser-ja', name: 'Browser Japanese', lang: 'ja-JP', localService: false };
+  const vox = { voiceURI: 'voicevox:2', name: 'VOICEVOX test', lang: 'ja-JP', localService: true };
+  const stored = new Map([['qwSpeechVoice', 'voicevox:2']]);
+  const h = harness([vox, browser], { getItem: k => stored.get(k), setItem: (k,v) => stored.set(k,v) });
+  assert.equal(h.status().voice, vox.name);
+  assert.equal(h.controller.setVoice(''), true);
+  assert.equal(h.status().voice, browser.name);
+  assert.equal(h.status().enabled, false);
+  assert.equal(h.played.length, 0);
+  assert.equal(stored.get('qwSpeechVoice'), '');
+  h.controller.enable(); h.controller.say('TEST ONLY');
+  assert.equal(h.played[0].voice, browser);
+  const defaultOnly = harness([vox]);
+  assert.equal(defaultOnly.status().voice, '');
+});
+
 test('starts off and only speaks after explicit activation', () => {
   const h = harness();
   assert.equal(h.status().phase, 'off');
@@ -217,6 +234,36 @@ test('turning off clears the queue and ignores cancelled callbacks', () => {
   assert.equal(h.status().phase, 'off');
   assert.equal(h.played.length, 1);
   assert.equal(h.timers.size, 0);
+});
+
+test('holding speech cancels old playback and waits for release before speaking', () => {
+  const h = harness(); h.controller.enable();
+  h.controller.say('old'); h.controller.say('old queued');
+  const old = h.played[0]; h.controller.hold();
+  h.controller.say('after alarm', { interrupt: true });
+  old.onend(); old.onerror({ error: 'cancelled' });
+  assert.equal(h.played.length, 1); assert.equal(h.timers.size, 0);
+  h.controller.release();
+  assert.equal(h.played[1].text, 'after alarm');
+  assert.equal(h.status().enabled, true);
+  h.finish(); assert.equal(h.played.length, 2);
+});
+
+test('release never activates OFF speech or restores text cleared by OFF', () => {
+  const h = harness(); h.controller.hold(); h.controller.release();
+  assert.equal(h.status().enabled, false); assert.equal(h.played.length, 0);
+  h.controller.enable(); h.controller.hold(); h.controller.say('held');
+  h.controller.disable(); h.controller.release(); h.controller.enable();
+  assert.equal(h.played.length, 0); assert.equal(h.status().phase, 'ready');
+});
+
+test('holding or stopping a failed speech engine preserves its visible error', () => {
+  const h = harness(); h.controller.enable(); h.controller.say('blocked');
+  h.played[0].onerror({ error: 'not-allowed' });
+  h.controller.hold(); h.controller.stop(); h.controller.release();
+  assert.equal(h.status().phase, 'error'); assert.equal(h.status().enabled, false);
+  assert.match(h.status().error, /音声テスト/);
+  assert.equal(h.played.length, 1);
 });
 
 test('a blocked engine reports an error and explicit retry recovers', () => {

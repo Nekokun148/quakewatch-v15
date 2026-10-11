@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { eewInfo, createEEWTracker } from '../js/eew.js';
-import { eewAnnouncement } from '../js/speech.js';
-import { createAlarmController } from '../js/alarm.js';
+import { createSpeechController, eewAnnouncement } from '../js/speech.js';
+import { createAlarmController, createAlarmAnnouncer } from '../js/alarm.js';
 
 const time = '2026/10/07 21:20:00';
 const now = Date.parse('2026-10-07T21:20:01+09:00');
@@ -159,4 +159,93 @@ test('unsupported and blocked audio engines fail explicitly', async () => {
   assert.equal(await createAlarmController({ environment: {} }).enable(), false);
   const h = alarmHarness(async () => { throw new Error('blocked'); });
   assert.equal(await h.alarm.enable(), false); assert.equal(h.statuses.at(-1).phase, 'error');
+});
+
+function announcerHarness() {
+  const h = alarmHarness();
+  const spoken = [], statuses = [];
+  const speech = createSpeechController({ environment: {
+    speechSynthesis: { getVoices: () => [], addEventListener() {}, cancel() {}, speak: utterance => spoken.push(utterance) },
+    SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
+    setTimeout: () => 1, clearTimeout() {}
+  }, onStatus: status => statuses.push(status) });
+  const announcer = createAlarmAnnouncer({ alarm: h.alarm, speech });
+  return { ...h, speech, announcer, spoken, speechStatus: () => statuses.at(-1),
+    finishSpeech() { spoken.at(-1).onstart(); spoken.at(-1).onend(); } };
+}
+
+test('caution is spoken once after natural alarm completion and before EEW details', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('緊急地震速報。テスト詳細。', { sound: true });
+  assert.equal(h.spoken.length, 0);
+  h.tones[0].onended();
+  assert.equal(h.spoken[0].text, '強い揺れに警戒してください。');
+  h.tones[0].onended();
+  assert.equal(h.spoken.length, 1);
+  h.finishSpeech();
+  assert.equal(h.spoken[1].text, '緊急地震速報。');
+  h.finishSpeech();
+  assert.equal(h.spoken[2].text, 'テスト詳細。');
+});
+
+test('EEW updates during the alarm replace details without overlapping speech', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('第1報。', { sound: true });
+  h.announcer.announce('第2報。');
+  assert.equal(h.tones.length, 1); assert.equal(h.spoken.length, 0);
+  h.tones[0].onended(); h.finishSpeech();
+  assert.equal(h.spoken[1].text, '第2報。');
+  assert.ok(!h.spoken.some(utterance => utterance.text === '第1報。'));
+});
+
+test('replaced alarm callbacks cannot release speech or repeat the caution', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('第1報。', { sound: true });
+  h.announcer.announce('強まった第2報。', { sound: true });
+  h.tones[0].onended();
+  assert.equal(h.spoken.length, 0);
+  h.tones[1].onended(); h.finishSpeech();
+  assert.equal(h.spoken[1].text, '強まった第2報。');
+});
+
+test('cancellation suppresses pending caution and still reads the cancellation', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('警報。', { sound: true });
+  h.announcer.cancel();
+  h.announcer.announce('緊急地震速報は取り消されました。');
+  h.tones[0].onended();
+  assert.deepEqual(h.spoken.map(utterance => utterance.text), ['緊急地震速報は取り消されました。']);
+});
+
+test('alarm OFF cancels queued caution without enabling or replaying anything', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('警報。', { sound: true });
+  h.announcer.cancel(); h.alarm.disable(); h.tones[0].onended();
+  assert.equal(h.spoken.length, 0);
+  assert.equal(h.statuses.at(-1).phase, 'off');
+});
+
+test('speech OFF stays OFF when the alarm completes or when disabled midway', async () => {
+  const h = announcerHarness(); await h.alarm.enable();
+  h.announcer.announce('第1報。', { sound: true }); h.tones[0].onended();
+  assert.equal(h.spoken.length, 0); assert.equal(h.speechStatus().enabled, false);
+  h.speech.enable();
+  h.announcer.announce('第2報。', { sound: true }); h.speech.disable(); h.tones[1].onended();
+  assert.equal(h.spoken.length, 0); assert.equal(h.speechStatus().phase, 'off');
+});
+
+test('disabled or failed alarms fall back to EEW speech without a false completed-alarm caution', () => {
+  const h = announcerHarness(); h.speech.enable();
+  h.announcer.announce('テスト速報。', { sound: true });
+  assert.deepEqual(h.spoken.map(utterance => utterance.text), ['テスト速報。']);
+  const failed = createAlarmAnnouncer({ alarm: { play: () => false, stop() {} }, speech: h.speech });
+  failed.announce('失敗時の速報。', { sound: true });
+  assert.equal(h.spoken.at(-1).text, '失敗時の速報。');
+});
+
+test('alarm test without details produces only the requested caution after completion', async () => {
+  const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
+  h.announcer.announce('', { sound: true });
+  assert.equal(h.spoken.length, 0); h.tones[0].onended(); h.finishSpeech();
+  assert.deepEqual(h.spoken.map(utterance => utterance.text), ['強い揺れに警戒してください。']);
 });

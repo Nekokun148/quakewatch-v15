@@ -27,7 +27,7 @@ test('Pages build publishes only allowlisted files and removes stale artifacts',
   assert.equal(manifest.start_url, './');
   const html = await readFile(new URL('dist/index.html', root), 'utf8');
   assert.ok(!/href="\/(?!\/)|src="\/(?!\/)/.test(html));
-  for (const file of PUBLIC_FILES) assert.equal(await readFile(new URL('dist/' + file, root), 'utf8'), await readFile(new URL(file, root), 'utf8'));
+  for (const file of PUBLIC_FILES) assert.deepEqual(await readFile(new URL('dist/' + file, root)), await readFile(new URL(file, root)));
 });
 
 test('GitHub workflow tests and uploads the generated static directory', async () => {
@@ -102,7 +102,7 @@ function workerHarness({ offline = false } = {}) {
     },
     caches: {
       open: async () => cache,
-      keys: async () => [prefix + 'old', prefix + 'unified-map-v14', prefix + 'unified-map-v15', prefix + 'unified-map-v16', 'another-project-cache'],
+      keys: async () => [prefix + 'old', prefix + 'unified-map-v14', prefix + 'unified-map-v15', prefix + 'unified-map-v16', prefix + 'unified-map-v17', prefix + 'unified-map-v18', prefix + 'unified-map-v19', prefix + 'unified-map-v20', prefix + 'unified-map-v21', prefix + 'unified-map-v22', prefix + 'unified-map-v23', prefix + 'unified-map-v24', 'another-project-cache'],
       delete: async key => { deleted.push(key); }
     },
     fetch: async request => {
@@ -124,15 +124,25 @@ test('Service Worker precaches assets and deletes only its own previous project 
   h.handlers.install({ waitUntil: value => { promise = value; } });
   await promise;
   assert.ok(h.added.includes('./js/observations.js'));
+  assert.ok(h.added.includes('./js/observation-ui.js'));
+  assert.ok(h.added.includes('./js/voicevox.js'));
+  assert.ok(!h.added.includes('./audio/eew-alarm.mp3'));
+  assert.ok(h.added.includes('./js/ydits.js'));
+  assert.ok(h.added.includes('./js/wolfx.js'));
+  assert.ok(h.added.includes('./js/monitor-changes.js'));
+  assert.ok(h.added.every(path => !path.includes('/local/')));
   h.handlers.activate({ waitUntil: value => { promise = value; } });
   await promise;
-  assert.deepEqual(h.deleted, [h.prefix + 'old', h.prefix + 'unified-map-v14', h.prefix + 'unified-map-v15']);
+  assert.ok(h.deleted.includes(h.prefix + 'unified-map-v24'));
+  h.deleted.splice(h.deleted.indexOf(h.prefix + 'unified-map-v24'), 1);
+  assert.deepEqual(h.deleted, [h.prefix + 'old', h.prefix + 'unified-map-v14', h.prefix + 'unified-map-v15', h.prefix + 'unified-map-v16', h.prefix + 'unified-map-v17', h.prefix + 'unified-map-v18', h.prefix + 'unified-map-v19', h.prefix + 'unified-map-v20', h.prefix + 'unified-map-v21', h.prefix + 'unified-map-v22', h.prefix + 'unified-map-v23']);
 });
 
 test('Service Worker never caches live APIs, sibling sites, or non-GET requests', async () => {
   const h = workerHarness();
   assert.equal(await h.fetchEvent('https://www.jma.go.jp/bosai/quake/data/list.json'), null);
   assert.equal(await h.fetchEvent('https://api.p2pquake.net/v2/history'), null);
+  for (const server of ['api', 'api2', 'api3']) assert.equal(await h.fetchEvent(`https://${server}.ydits.net/vxse43`), null);
   assert.equal(await h.fetchEvent('https://example.github.io/quakewatch-v15/api/strong-motion/latest'), null);
   assert.equal(await h.fetchEvent('https://quakewatch-v15-relay.kouryou148.workers.dev/api/strong-motion/latest'), null);
   assert.equal(await h.fetchEvent('https://example.github.io/other/index.html'), null);

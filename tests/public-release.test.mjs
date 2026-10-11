@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PUBLIC_FILES } from '../scripts/build.mjs';
+
+const root = new URL('../', import.meta.url);
+
+test('public release preserves the requested name and existing PWA identity', async () => {
+  const html = await readFile(new URL('index.html', root), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
+  assert.match(html, /<title>QuakeWatch ver15<\/title>/);
+  assert.match(html, /<h1>QuakeWatch ver15<\/h1>/);
+  assert.equal(manifest.name, 'QuakeWatch ver15');
+  assert.equal(manifest.short_name, 'QuakeWatch ver15');
+  for (const field of ['id', 'start_url', 'scope']) assert.equal(manifest[field], './');
+});
+
+test('public release excludes private credential integrations and unverified audio', async () => {
+  assert.ok(PUBLIC_FILES.every(file => !file.includes('/local/') && !file.startsWith('audio/')));
+  const app = await readFile(new URL('js/app.js', root), 'utf8');
+  assert.doesNotMatch(app, /dmdata|qwDmdataKey|eew-alarm\.mp3/);
+  const sw = await readFile(new URL('sw.js', root), 'utf8');
+  assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
+  assert.match(sw, /unified-map-v30-public/);
+  const ignore = await readFile(new URL('.gitignore', root), 'utf8');
+  assert.match(ignore, /audio\/eew-alarm\.mp3/);
+  assert.match(ignore, /js\/local\//);
+});
+
+test('public generated alarm completes before caution without loading any audio asset', async () => {
+  const { createAlarmController, createAlarmAnnouncer } = await import('../js/alarm.js');
+  const sources = [], spoken = [], held = [];
+  let requests = 0;
+  const parameter = { setValueAtTime() {}, linearRampToValueAtTime() {} };
+  class Context {
+    state = 'suspended'; currentTime = 0; destination = {};
+    async resume() { this.state = 'running'; }
+    createOscillator() {
+      const source = { connect() {}, disconnect() {}, start() {}, stop() {}, frequency: parameter };
+      sources.push(source);
+      return source;
+    }
+    createGain() { return { connect() {}, disconnect() {}, gain: parameter }; }
+  }
+  const alarm = createAlarmController({ soundUrl: null, environment: {
+    AudioContext: Context, fetch() { requests++; throw new Error('unexpected audio fetch'); }
+  } });
+  const speech = { hold() { held.push(true); }, release() { held.push(false); },
+    say(text) { spoken.push(text); }, stop() {} };
+  const announce = createAlarmAnnouncer({ alarm, speech });
+  assert.equal(alarm.play(), false);
+  assert.equal(await alarm.enable(), true);
+  assert.equal(sources.length, 0);
+  announce.announce('テスト速報。', { sound: true });
+  assert.equal(sources.length, 1);
+  assert.deepEqual(spoken, []);
+  sources[0].onended();
+  sources[0].onended();
+  assert.deepEqual(spoken, ['強い揺れに警戒してください。テスト速報。']);
+  assert.deepEqual(held, [true, false]);
+  assert.equal(requests, 0);
+});

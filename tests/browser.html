@@ -2,15 +2,30 @@
 <html lang="ja">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>QuakeWatch Local Receive Tests</title>
+<title>地震監視Web ローカル表示テスト</title>
 <style>
-  body { margin: 0; font-family: sans-serif; }
+  body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
   button { padding: 8px; }
-  iframe { width: 100%; height: calc(100vh - 58px); border: 0; }
+  nav { flex: none; }
+  nav details { position: relative; margin-left: auto; }
+  nav summary { cursor: pointer; padding: 8px; }
+  .other-tests { position: absolute; top: 100%; right: 0; z-index: 10; display: grid; gap: 6px; padding: 8px; width: 240px; max-height: 50vh; overflow: auto; background: #fff; box-shadow: 0 2px 8px #0004; }
+  output { flex: none; padding: 4px 8px; font-size: 12px; }
+  iframe { width: 100%; flex: 1; min-height: 0; border: 0; }
+  #simulation { flex: none; box-sizing: border-box; max-width: 100%; padding: 6px 8px; border-block: 1px solid #555; }
+  #simulation h2 { font-size: 14px; margin: 0 0 4px; }
+  #simulation p { font-size: 12px; margin: 0 0 4px; }
+  #simulation table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 12px; }
+  #simulation th, #simulation td { padding: 2px 4px; text-align: left; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  #simulation th:first-child { width: 30%; }
+  #simulation small { display: block; font-size: 11px; color: #bbc5ce; }
+  #simulation td:last-child { font-weight: 700; }
 </style>
 <nav>
   <select id="viewport" aria-label="表示幅"><option value="100%">標準表示</option><option value="390px">モバイル390px</option></select>
+  <button id="aomori" disabled>青森県東方沖 震度6弱テスト</button>
+  <details><summary>その他のテスト</summary><div class="other-tests">
   <button id="weak" disabled>震度1受信テスト</button>
   <button id="sensing" disabled>揺れ報告テスト</button>
   <button id="duplicate" disabled>同じ報告を再受信</button>
@@ -22,24 +37,35 @@
   <button id="eewWarning" disabled>EEW警報・PLUMテスト</button>
   <button id="eewFinal" disabled>EEW最終報テスト</button>
   <button id="eewCancel" disabled>EEW取消テスト</button>
+  </div></details>
 </nav>
 <output id="result" aria-live="polite"></output>
-<iframe src="../index.html" title="QuakeWatch"></iframe>
+<section id="simulation" hidden aria-label="模擬地域の現在震度">
+  <h2>模擬地域の現在震度</h2>
+  <p>すべてテストデータ。到達は一定速度・深さ未考慮の簡易モデル、震度は試験用の固定推移。白い点線枠は仮の地域で、実観測ではありません。</p>
+  <table><thead><tr><th scope="col">模擬地域</th><th scope="col">P波まで</th><th scope="col">S波まで</th><th scope="col">現在の模擬震度</th></tr></thead><tbody id="simulationRows"></tbody></table>
+</section>
+<iframe src="../index.html" title="地震監視Web（模擬データの表示テスト）"></iframe>
 <script type="module">
   import { parseReportTime } from '../js/observations.js';
+  import { startRegionSimulation } from './simulation.js';
   const frame = document.querySelector('iframe');
   const enableTests = () => {
     if (frame.contentWindow.__quakeWatchV15) document.querySelectorAll('nav button').forEach(button => { button.disabled = false; });
   };
   frame.addEventListener('load', enableTests);
   enableTests();
-  document.querySelector('#viewport').onchange = event => { frame.style.width = event.target.value; };
+  document.querySelector('#viewport').onchange = event => {
+    frame.style.width = event.target.value;
+    document.querySelector('#simulation').style.width = event.target.value;
+  };
   let report;
   let testQuake;
   let issueTime = 0;
   let colorStep = 0;
   let eew;
   let serial = 0;
+  let stopRegionSimulation;
   const receive = data => frame.contentWindow.__quakeWatchV15.onData(data);
   const nextTime = () => {
     const current = frame.contentWindow.__quakeWatchV15.state.latestQuake;
@@ -50,6 +76,25 @@
     const state = frame.contentWindow.__quakeWatchV15.state;
     const layers = state.observationLayer?.getLayers() || [];
     document.querySelector('#result').textContent = `表示中の観測点: ${layers.length} / 色: ${layers.map(layer => layer.options.fillColor).join(', ')} / ${state.latestQuake?.earthquake.hypocenter.name}`;
+  };
+  document.querySelector('#aomori').onclick = () => {
+    const time = nextTime();
+    const originTime = new Date(Date.now() - 15000).toISOString();
+    const data = {
+      id: `test-aomori-${time}`, code: 551, test: true,
+      issue: { time, source: '利用者指定の模擬データ', type: 'Test' },
+      earthquake: {
+        time: originTime, maxScale: 55,
+        hypocenter: { name: '【表示テスト・仮の震源】青森県東方沖', magnitude: 7.4, depth: 80, latitude: 41, longitude: 143 }
+      },
+      points: [], observationSource: '模擬データ（実際の観測ではありません）'
+    };
+    frame.contentWindow.__quakeWatchV15.onData(data, { silent: true, animateWaves: true });
+    stopRegionSimulation?.();
+    stopRegionSimulation = startRegionSimulation({ document, environment: window,
+      map: frame.contentWindow.__quakeWatchV15.state.leafletMap, L: frame.contentWindow.L,
+      origin: parseReportTime(originTime) });
+    document.querySelector('#result').textContent = '模擬データ表示：青森県東方沖 / 最大震度6弱 / 深さ80km / M7.4。実際の地震ではありません。仮の震源は北緯41度・東経143度、発生15秒後からP/Sの簡易予測リングを表示（深さを使った伝播計算ではありません）。観測地点は未設定、音声再生なし。地図の観測画像・既存の別震源は通常の実データで、この模擬地震のものではありません。';
   };
   document.querySelector('#weak').onclick = () => receive({
     id: `test-weak-${Date.now()}`, code: 551,

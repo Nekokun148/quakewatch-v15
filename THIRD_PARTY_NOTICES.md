@@ -46,3 +46,15 @@ Displaying image colors on another map is based on the user's stated permission.
 That permission must cover image reuse/remapping before publication; it is not
 conferred by the MIT metadata license or the J-SHIS API terms.
 https://www.kyoshin.bosai.go.jp/ja/about_kmoni/
+
+## User-Supplied Alarm Sound (nc239566)
+
+The user supplied an MP3 identified by nc239566 and requested it as the alarm.
+The unmodified file is used only in a separate local work copy as
+audio/eew-alarm.mp3 (42,688 bytes). It is not part of this public repository,
+Pages build, or Service Worker cache. The public app uses a generated tone.
+SHA-256: 1d86344aba88a522aa6ffe9ff54a846e6df5b2b4bf2f5620c18321e879a41363
+The author, source URL, license, and redistribution conditions are not verified.
+No license or attribution requirement is inferred from the filename. The map
+metadata MIT license above does not cover this audio. Verify the audio's terms
+before redistributing the asset. The MP3 has not been uploaded with this release.

@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1220">
-  <meta name="description" content="全国の地震情報をリアルタイム表示する V15">
+  <meta name="description" content="QuakeWatch ver15：全国の地震情報をリアルタイム表示">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="css/style.css">
-  <title>全国リアルタイム地震ビューア V15</title>
+  <title>QuakeWatch ver15</title>
 </head>
 <body>
   <header class="topbar">
     <div>
-      <h1>全国リアルタイム地震ビューア <span>V15</span></h1>
+      <h1>QuakeWatch ver15</h1>
       <time id="currentTime" class="current-time" aria-label="現在時刻 日本時間"></time>
       <p id="status">接続準備中…</p>
     </div>
@@ -38,6 +38,11 @@
           <span>読み上げの声</span>
           <select id="speechVoice" disabled><option value="">自動選択（日本語）</option></select>
         </label>
+        <div class="voicevox-control">
+          <button id="browserSpeech" type="button" title="ブラウザ標準の日本語音声を選択">ブラウザ標準</button>
+          <button id="voicevoxConnect" type="button">VOICEVOX 接続</button>
+          <span id="voicevoxStatus" role="status" aria-live="polite">VOICEVOX未接続（このPC）</span>
+        </div>
         <p id="speechStatus" class="speech-status" role="status" aria-live="polite">停止中</p>
       </div>
       <button id="reconnect" type="button">再接続</button>
@@ -102,6 +107,20 @@
         <h2>直近の緊急地震速報</h2>
         <div id="eewDetails" class="details"></div>
         <div id="eewRegions" class="region-list"></div>
+        <p id="eewWaveStatus" class="muted">P/S表示：震源情報待機中</p>
+      </section>
+
+      <section class="card">
+        <h2>YDITS 緊急地震速報</h2>
+        <p id="yditsFeedStatus" class="muted" role="status">サーバー1へ接続準備中</p>
+        <p id="wolfxFeedStatus" class="muted" role="status">Wolfx / 待機（YDITS優先・障害時のみ代替）</p>
+        <p class="muted"><a href="https://wolfx.jp/docs/open-api/" target="_blank" rel="noopener noreferrer">Wolfx</a>：非公式の参考情報・YDITS障害時の代替</p>
+      </section>
+
+      <section class="card">
+        <h2>強震モニタの変化</h2>
+        <p id="monitorChangeStatus" class="muted">画像色の変化：比較待機 / 地震・震源未確定</p>
+        <div id="monitorChangedStations" class="region-list"></div>
       </section>
 
       <section class="card">
@@ -121,20 +140,26 @@
       </section>
 
       <section class="card">
+        <h2>地震履歴</h2>
+        <p id="quakeHistorySelection" class="muted">履歴未受信</p>
+        <div id="quakeHistory" class="quake-history"></div>
+      </section>
+
+      <section class="card">
         <h2>揺れの報告</h2>
         <div id="sensingReports" class="region-list"><div class="muted">まだありません</div></div>
-        <p id="sensingStatus" class="muted">利用者の報告・震度未確定</p>
+        <p id="sensingStatus" class="muted">P2Pの常時監視停止中・新規の利用者報告は未受信</p>
       </section>
 
       <section class="card small">
         <h2>データ経路</h2>
         <ul>
-          <li>P2P地震情報 WebSocket</li>
+          <li>YDITS API 緊急地震速報（サーバー1優先）</li>
           <li>気象庁 地震情報</li>
           <li>気象庁 観測震度・観測点座標</li>
           <li>防災科研 強震モニタ公式画像</li>
           <li>緊急地震速報（EEW）</li>
-          <li>地震感知情報（全国ネット）</li>
+          <li>強震モニタ画像の色の変化（地震・震源未確定）</li>
         </ul>
         <p class="notice">※小さい色付き点は強震モニタ画像の色です。白枠の大きい点は気象庁の発表震度です。</p>
         <p class="notice">※画像から正確な数値や地震発生は判定しません。灰色・海底の輪は観測値未受信です。</p>

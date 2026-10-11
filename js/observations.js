@@ -56,6 +56,16 @@ export function observedRegions(points = []) {
   return [...regions.values()].sort((a, b) => b.scale - a.scale);
 }
 
+export function selectObservationReport(current, incoming) {
+  if (!current || incoming.points?.length) return incoming;
+  const a = current.earthquake || {};
+  const b = incoming.earthquake || {};
+  const time = parseReportTime(a.time);
+  const sameEvent = time && time === parseReportTime(b.time)
+    && (!b.hypocenter?.name || !a.hypocenter?.name || a.hypocenter.name === b.hypocenter.name);
+  return sameEvent ? current : incoming;
+}
+
 export function quakeReportTime(data) {
   return parseReportTime(data.issue?.time || data.time || data.earthquake?.time);
 }
