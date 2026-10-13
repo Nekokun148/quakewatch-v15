@@ -21,10 +21,20 @@ test('public release excludes private credential integrations and unverified aud
   assert.doesNotMatch(app, /dmdata|qwDmdataKey|eew-alarm\.mp3/);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v32-public/);
+  assert.match(sw, /unified-map-v34-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);
+});
+
+test('public VOICEVOX controls retain a visible and accessible PC-only compatibility notice', async () => {
+  const html = await readFile(new URL('index.html', root), 'utf8');
+  assert.match(html, /<p id="voicevoxCompatibility" class="speech-status">VOICEVOXはPC限定です。<\/p>/);
+  assert.match(html, /<input id="voicevoxPrefer"[^>]*aria-describedby="voicevoxCompatibility"[^>]*checked>/);
+  assert.match(html, /<button id="voicevoxConnect"[^>]*aria-describedby="voicevoxCompatibility"/);
+  assert.ok(html.indexOf('id="voicevoxCompatibility"') > html.indexOf('id="voicevoxStatus"'));
+  assert.ok(html.indexOf('id="voicevoxCompatibility"') < html.indexOf('id="speechStatus"'));
+  assert.match(html, /<button id="browserSpeech"[^>]*>ブラウザ標準<\/button>/);
 });
 
 test('public generated alarm completes before caution without loading any audio asset', async () => {

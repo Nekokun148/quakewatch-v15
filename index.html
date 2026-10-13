@@ -39,11 +39,12 @@
           <select id="speechVoice" disabled><option value="">自動選択（日本語）</option></select>
         </label>
         <div class="voicevox-control">
-          <label class="alarm-toggle" title="読み上げON時に同じ端末のVOICEVOXへ接続を試み、利用できれば次の読み上げから使用"><input id="voicevoxPrefer" type="checkbox" checked>VOICEVOX優先</label>
+          <label class="alarm-toggle" title="読み上げON時に同じ端末のVOICEVOXへ接続を試み、利用できれば次の読み上げから使用"><input id="voicevoxPrefer" type="checkbox" aria-describedby="voicevoxCompatibility" checked>VOICEVOX優先</label>
           <button id="browserSpeech" type="button" title="ブラウザ標準の日本語音声を選択">ブラウザ標準</button>
-          <button id="voicevoxConnect" type="button">VOICEVOX 接続</button>
+          <button id="voicevoxConnect" type="button" aria-describedby="voicevoxCompatibility">VOICEVOX 接続</button>
           <span id="voicevoxStatus" role="status" aria-live="polite">VOICEVOX未接続（この端末）</span>
         </div>
+        <p id="voicevoxCompatibility" class="speech-status">VOICEVOXはPC限定です。</p>
         <p id="speechStatus" class="speech-status" role="status" aria-live="polite">停止中</p>
       </div>
       <button id="reconnect" type="button">再接続</button>
