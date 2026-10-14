@@ -1,5 +1,9 @@
 import { intensityColor, parseReportTime } from './observations.js';
 
+export function meetsAlarmThreshold(scale) {
+  return Boolean(intensityColor(scale)) && Number(scale) >= 45;
+}
+
 export function eewInfo(data) {
   const cancelled = data.cancelled === true || data.isCancel === true;
   const final = data.isFinal === true || data.issue?.isFinal === true;
@@ -43,6 +47,6 @@ export function createEEWTracker() {
     if (events.size > 50) events.delete(events.keys().next().value);
     const fresh = info.time > 0 && now - info.time >= -10000 && now - info.time <= 120000;
     const escalation = !old || info.maxScale > old.scale || (!info.forecast && !old.warned);
-    return { accepted: true, info, sound: !silent && fresh && !info.training && !info.cancelled && escalation };
+    return { accepted: true, info, sound: !silent && fresh && !info.training && !info.cancelled && escalation && meetsAlarmThreshold(info.maxScale) };
   };
 }

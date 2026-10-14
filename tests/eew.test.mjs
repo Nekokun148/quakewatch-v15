@@ -7,6 +7,7 @@ import { createAlarmController, createAlarmAnnouncer } from '../js/alarm.js';
 const time = '2026/10/07 21:20:00';
 const now = Date.parse('2026-10-07T21:20:01+09:00');
 const report = extra => ({ code: 556, issue: { eventId: 'test-event', serial: '1', time }, earthquake: { hypocenter: { name: 'テスト震源' } }, areas: [{ pref: '東京都', name: '東京テスト地域', scaleFrom: 30, scaleTo: 40, kindCode: '10' }], ...extra });
+const strongReport = extra => report({ areas: [{ pref: '東京都', name: '東京テスト地域', scaleFrom: 45, scaleTo: 45, kindCode: '10' }], ...extra });
 
 test('warning, forecast, final and cancellation stages reflect explicit data, never report counts alone', () => {
   assert.equal(eewInfo(report()).stage, '警報・第1報');
@@ -37,24 +38,24 @@ test('unknown and invalid intensities are not turned into definite predictions',
 
 test('EEW duplicates, older reports and unchanged updates do not replay the alarm', () => {
   const receive = createEEWTracker();
-  assert.equal(receive(report(), { now }).sound, true);
-  assert.equal(receive(report(), { now }).accepted, false);
-  const second = report({ issue: { eventId: 'test-event', serial: '2', time } });
+  assert.equal(receive(strongReport(), { now }).sound, true);
+  assert.equal(receive(strongReport(), { now }).accepted, false);
+  const second = strongReport({ issue: { eventId: 'test-event', serial: '2', time } });
   assert.equal(receive(second, { now }).sound, false);
-  assert.equal(receive(report(), { now }).accepted, false);
+  assert.equal(receive(strongReport(), { now }).accepted, false);
 });
 
 test('stronger predictions and forecast-to-warning escalation can alert again', () => {
   const receive = createEEWTracker();
-  receive(report({ isWarning: false }), { now });
-  assert.equal(receive(report({ issue: { eventId: 'test-event', serial: '2', time } }), { now }).sound, true);
-  assert.equal(receive(report({ issue: { eventId: 'test-event', serial: '3', time }, areas: [{ scaleTo: 50, scaleFrom: 45 }] }), { now }).sound, true);
+  receive(strongReport({ isWarning: false }), { now });
+  assert.equal(receive(strongReport({ issue: { eventId: 'test-event', serial: '2', time } }), { now }).sound, true);
+  assert.equal(receive(strongReport({ issue: { eventId: 'test-event', serial: '3', time }, areas: [{ scaleTo: 50, scaleFrom: 45 }] }), { now }).sound, true);
 });
 
 test('history, training, cancellation and stale reports never sound automatically', () => {
   for (const [data, options] of [
-    [report(), { now, silent: true }], [report({ test: true }), { now }],
-    [report({ cancelled: true }), { now }], [report(), { now: now + 200000 }]
+    [strongReport(), { now, silent: true }], [strongReport({ test: true }), { now }],
+    [strongReport({ cancelled: true }), { now }], [strongReport(), { now: now + 200000 }]
   ]) assert.equal(createEEWTracker()(data, options).sound, false);
 });
 

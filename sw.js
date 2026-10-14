@@ -1,10 +1,10 @@
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = `quake-v15-${encodeURIComponent(SCOPE.pathname)}-`;
-const CACHE = PREFIX + 'unified-map-v34-public';
+const CACHE = PREFIX + 'unified-map-v35-public';
 const ASSETS = ['./', './index.html', './css/style.css', './js/app.js', './js/observations.js', './js/observation-ui.js', './js/strong-motion.js', './js/monitor-map.js', './js/monitor-changes.js', './js/ydits.js', './js/waves.js', './data/basemap.geojson', './data/monitor-points.json', './THIRD_PARTY_NOTICES.md', './js/eew.js', './js/alarm.js', './js/speech.js', './js/voicevox.js', './js/location.js', './js/sensing-areas.js', './js/seafloor-stations.js', './js/data.js', './js/stations.js', './manifest.json', './icons/icon.svg'];
 
 self.addEventListener('install', event => event.waitUntil(
-  caches.open(CACHE).then(cache => cache.addAll([...ASSETS, './js/wolfx.js'])).then(() => self.skipWaiting())
+  caches.open(CACHE).then(cache => cache.addAll([...ASSETS, './js/wolfx.js', './js/dmdata.js', './js/dmdata-ui.js'])).then(() => self.skipWaiting())
 ));
 self.addEventListener('activate', event => event.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith(PREFIX) && key !== CACHE).map(key => caches.delete(key))))

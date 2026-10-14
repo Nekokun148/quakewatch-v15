@@ -108,7 +108,8 @@ test('YDITS deduplication does not suppress same-time intensity escalation or a 
   const data = warning(); data.report.earthquake.intensity = '4';
   const first = adapter(yditsSnapshot(data, initial));
   assert.equal(receive({ ...first, test: true }, { now: initial }).sound, false);
-  assert.equal(receive(first, { now: initial }).sound, true);
+  const real = receive(first, { now: initial });
+  assert.equal(real.accepted, true); assert.equal(real.sound, false);
   assert.equal(receive(first, { now: initial }).accepted, false);
   data.report.earthquake.intensity = '6-';
   assert.equal(receive(adapter(yditsSnapshot(data, initial)), { now: initial }).sound, true);

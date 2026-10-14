@@ -7,7 +7,8 @@ import { measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeR
 import { renderObservationRegions } from './observation-ui.js';
 import { createStrongMotionController } from './strong-motion.js';
 import { createAlarmController, createAlarmAnnouncer } from './alarm.js';
-import { createEEWTracker } from './eew.js';
+import { createEEWTracker, eewInfo, meetsAlarmThreshold } from './eew.js';
+import { mountDmdata } from './dmdata-ui.js';
 import { matchMonitorPoints, frameColors, UNRECEIVED_COLOR } from './monitor-map.js';
 import { createMonitorChangeTracker } from './monitor-changes.js';
 import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
@@ -65,6 +66,7 @@ const alarm = createAlarmController({ soundUrl: null, onStatus(info) {
   $('alarmTest').disabled = !info.supported;
   $('alarmStatus').textContent = info.error || ({ off: '警報音 OFF', armed: '警報音 ON', playing: '警報音を再生中', unsupported: '警報音 未対応' })[info.phase];
   if (!info.error && info.supported) {
+    $('alarmStatus').textContent += ' / 自動警報は震度5弱以上';
     $('alarmStatus').textContent += info.assetWarning ? ` / ${info.assetWarning}`
       : info.source === 'file' ? ` / 指定MP3・${info.duration.toFixed(1)}秒`
       : info.assetPhase === 'none' ? ''
@@ -697,7 +699,7 @@ function onData(d, options = {}) {
         state.seen.add(d.id || d.time);
         showToast('緊急地震速報の発表を検出しました。続報に注意してください。');
         const time = quakeReportTime(d);
-        if (time && Math.abs(Date.now() - time) <= 120000) alarmAnnouncer.announce('', { sound: true });
+        if (time && Math.abs(Date.now() - time) <= 120000 && meetsAlarmThreshold(eewInfo(d).maxScale)) alarmAnnouncer.announce('', { sound: true });
       }
       break;
     case 561:
@@ -997,6 +999,7 @@ let autoLocation = true;
 try { autoLocation = localStorage.getItem('qwLocationEnabled') !== 'false'; } catch {}
 if (autoLocation) locationControl.start();
 const adaptYdits = createYditsEEWAdapter();
+let dmdataActive = false;
 let wolfxActive = false;
 let wolfxStatus = 'Wolfx / 接続準備';
 const wolfxFeed = createWolfxFeed({
@@ -1011,11 +1014,13 @@ const wolfxFeed = createWolfxFeed({
 });
 const yditsFeed = createYditsFeed({
   onData(snapshot) {
+    if (dmdataActive) return;
     document.body.dataset.qwYditsActive = String(snapshot.active);
     const report = adaptYdits(snapshot);
     if (report) onData(report, { silent: snapshot.stale || snapshot.training });
   },
   onStatus(info) {
+    if (dmdataActive) return;
     if (info.phase === 'live') { wolfxActive = false; wolfxFeed.stop(); }
     if (info.phase === 'error' && info.server === 3 && !wolfxActive) { wolfxActive = true; wolfxFeed.start(); }
     $('status').textContent = wolfxActive ? wolfxStatus : info.text;
@@ -1036,6 +1041,18 @@ const observationFeed = createObservationFeed({
   }
 });
 observationFeed.poll();
+mountDmdata({
+  onData(report, options) { if (dmdataActive) onData(report, options); },
+  onStatus(info) {
+    if (info.phase === 'live') {
+      if (!dmdataActive) { dmdataActive = true; wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); }
+      $('status').textContent = info.text;
+    } else if (['error', 'off'].includes(info.phase) && dmdataActive) {
+      dmdataActive = false; void yditsFeed.start();
+    }
+    document.body.dataset.qwDmdata = info.phase; updateDiagnostics();
+  }
+});
 setInterval(() => observationFeed.poll(), 60000);
 if (new URLSearchParams(location.search).has('demo')) setTimeout(runDemoEvent, 1000);
 if ('serviceWorker' in navigator) {
