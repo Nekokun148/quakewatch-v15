@@ -9,11 +9,14 @@ import { createStrongMotionController } from './strong-motion.js';
 import { createAlarmController, createAlarmAnnouncer } from './alarm.js';
 import { createEEWTracker, eewInfo, meetsAlarmThreshold } from './eew.js';
 import { mountDmdata } from './dmdata-ui.js';
+import { createSharedDmdataFeed } from './dmdata-shared.js';
 import { matchMonitorPoints, frameColors, UNRECEIVED_COLOR } from './monitor-map.js';
 import { createMonitorChangeTracker } from './monitor-changes.js';
+import { createQuakeHighlight } from './quake-highlight.js';
 import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
 import { createWolfxFeed } from './wolfx.js';
 import { animateWaves } from './waves.js';
+import { mountTaiwan } from './taiwan-ui.js';
 
 const state = {
   ws: null,
@@ -38,6 +41,7 @@ const state = {
 };
 
 const $ = id => document.getElementById(id);
+mountTaiwan({ apiBase: document.body.dataset.kmoniApiBase || 'api/strong-motion/' });
 const stationCircles = new Map();
 let monitorPoints = [];
 let monitorObservation;
@@ -528,6 +532,9 @@ function rememberQuake(d) {
   if (index >= 0) quakeHistory.splice(index, 1);
   quakeHistory.unshift(d);
   quakeHistory.length = Math.min(quakeHistory.length, 50);
+  renderQuakeHistory();
+}
+function renderQuakeHistory() {
   const list = $('quakeHistory');
   if (!list) return;
   list.replaceChildren();
@@ -541,11 +548,12 @@ function rememberQuake(d) {
       state.waveLayer?.clearLayers();
       if (state.localMap) state.localMap.waveLayer.innerHTML = '';
       addMarker(findLatLng(h), `履歴：${h.name || '震源不明'}`, 'quake');
+      state.quakeHighlight?.clear();
       $('quakeHistorySelection').textContent = `履歴表示：${displayObservationTime(q.time)} / ${h.name || '震源不明'} / M${h.magnitude ?? '-'} / 深さ${h.depth ?? '-'}km`;
     });
     list.appendChild(button);
   }
-  $('quakeHistorySelection').textContent = '最新の震源を表示';
+  $('quakeHistorySelection').textContent = quakeHistory.length ? '最新の震源を表示' : '履歴未受信';
 }
 
 function handleQuake(d, options = {}) {
@@ -574,6 +582,7 @@ function handleQuake(d, options = {}) {
   renderObservations(state.latestObservation);
   const pos = findLatLng(h);
   addMarker(pos, title, 'quake');
+  state.quakeHighlight?.update(d, options);
   if ((!options.silent || options.animateWaves === true) && !sameReport) startWaveAnimation(pos, q.time || d.time);
   const text = quakeAnnouncement(d, scaleText);
   rememberAnnouncement(text);
@@ -768,6 +777,7 @@ function loadMap() {
   state.leafletMap.createPane('observationPane').style.zIndex = 450;
   state.observationLayer = L.layerGroup().addTo(state.leafletMap);
   renderLeafletObservationNetwork();
+  state.quakeHighlight = createQuakeHighlight({ map: state.leafletMap, L, document });
   const cities = [['札幌',43.0618,141.3545],['釧路',42.985,144.382],['青森',40.8246,140.74],['仙台',38.2682,140.8694],['新潟',37.9161,139.0364],['東京',35.6762,139.6503],['名古屋',35.1815,136.9066],['大阪',34.6937,135.5023],['広島',34.3853,132.4553],['高知',33.5597,133.5311],['福岡',33.5904,130.4017],['鹿児島',31.5966,130.5571],['那覇',26.2124,127.6809]];
   state.leafletMap.createPane('cityPane').style.zIndex = 410;
   for (const [name, lat, lng] of cities) L.marker([lat, lng], { pane: 'cityPane', interactive: false,
@@ -1000,6 +1010,7 @@ try { autoLocation = localStorage.getItem('qwLocationEnabled') !== 'false'; } ca
 if (autoLocation) locationControl.start();
 const adaptYdits = createYditsEEWAdapter();
 let dmdataActive = false;
+let sharedActive = false;
 let wolfxActive = false;
 let wolfxStatus = 'Wolfx / 接続準備';
 const wolfxFeed = createWolfxFeed({
@@ -1014,13 +1025,13 @@ const wolfxFeed = createWolfxFeed({
 });
 const yditsFeed = createYditsFeed({
   onData(snapshot) {
-    if (dmdataActive) return;
+    if (dmdataActive || sharedActive) return;
     document.body.dataset.qwYditsActive = String(snapshot.active);
     const report = adaptYdits(snapshot);
     if (report) onData(report, { silent: snapshot.stale || snapshot.training });
   },
   onStatus(info) {
-    if (dmdataActive) return;
+    if (dmdataActive || sharedActive) return;
     if (info.phase === 'live') { wolfxActive = false; wolfxFeed.stop(); }
     if (info.phase === 'error' && info.server === 3 && !wolfxActive) { wolfxActive = true; wolfxFeed.start(); }
     $('status').textContent = wolfxActive ? wolfxStatus : info.text;
@@ -1048,12 +1059,58 @@ mountDmdata({
       if (!dmdataActive) { dmdataActive = true; wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); }
       $('status').textContent = info.text;
     } else if (['error', 'off'].includes(info.phase) && dmdataActive) {
-      dmdataActive = false; void yditsFeed.start();
+      dmdataActive = false;
+      if (sharedActive) $('status').textContent = $('dmdataSharedStatus').textContent;
+      else void yditsFeed.start();
     }
     document.body.dataset.qwDmdata = info.phase; updateDiagnostics();
   }
 });
 setInterval(() => observationFeed.poll(), 60000);
+const sharedFeed = createSharedDmdataFeed({
+  url: document.body.dataset.dmdataSharedUrl || '',
+  onData: applySharedReport,
+  onStatus(info) {
+    $('dmdataSharedStatus').textContent = info.text;
+    document.body.dataset.qwDmdataShared = info.phase;
+    sharedActive = info.phase === 'live';
+    if (dmdataActive) return;
+    if (sharedActive) { wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); $('status').textContent = info.text; }
+    else void yditsFeed.start();
+  }
+});
+function applySharedReport(report, options) {
+    if (!sharedActive || (report.code === 556 && dmdataActive)) return;
+    if (report.code === 551 && report.cancelled) {
+      for (let i = quakeHistory.length - 1; i >= 0; i--) {
+        if (quakeHistory[i].source === 'DMDATA' && quakeHistory[i].issue?.eventId === report.issue.eventId) quakeHistory.splice(i, 1);
+      }
+      renderQuakeHistory();
+      if (state.latestQuake?.source === 'DMDATA' && state.latestQuake.issue?.eventId === report.issue.eventId) {
+        $('quakeDetails').textContent = 'DMDATA経由の地震情報は取消されました。気象庁情報を確認中';
+        if (state.bannerTime === quakeReportTime(state.latestQuake)) {
+          $('headline').textContent = '地震情報の取消'; $('headlineSub').textContent = '気象庁情報を確認中';
+          clearWaveTimers(); state.waveLayer?.clearLayers();
+          if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+          addMarker(null, '', 'quake');
+        }
+        if (state.latestObservation?.earthquake?.time === state.latestQuake.earthquake?.time) {
+          state.latestObservation = null; renderObservations({ points: [] });
+        }
+        state.latestQuake = null;
+      }
+      void observationFeed.poll(); return;
+    }
+    if (report.code === 551 && measuredPoints(state.latestObservation?.points).length) {
+      const sameEvent = state.latestObservation.earthquake?.time === report.earthquake?.time;
+      if (sameEvent) report = { ...report, points: state.latestObservation.points, observationSource: state.latestObservation.observationSource };
+    }
+    onData(report, options);
+    if (report.code === 551) void observationFeed.poll();
+}
+sharedFeed.start();
+window.addEventListener('pagehide', () => sharedFeed.stop());
+window.addEventListener('pageshow', event => { if (event.persisted) sharedFeed.start(); });
 if (new URLSearchParams(location.search).has('demo')) setTimeout(runDemoEvent, 1000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')

@@ -86,10 +86,47 @@ test('background documents and overlapping polls do not flood the source', async
   assert.equal(h.calls.length, 1);
 });
 
-test('missing static-host API stops retries and makes its limitation explicit', async () => {
+test('missing static-host API pauses immediate retries and makes its limitation explicit', async () => {
   const h = harness(async () => ({ ok: false, status: 404 }));
   h.controller.start('intensity'); await flush(); await h.controller.tick();
   assert.equal(h.states.at(-1).phase, 'unavailable'); assert.equal(h.calls.length, 1);
+});
+
+test('missing monitor relay automatically recovers after 30 seconds without a reload or user action', async () => {
+  let clock = now, available = false;
+  const h = harness(async () => available ? { ok: true, json: async () => snapshot } : { ok: false, status: 404 });
+  h.environment.Date.now = () => clock;
+  h.controller.start('intensity'); await flush();
+  for (let i = 0; i < 29; i++) { clock += 1000; await h.controller.tick(); }
+  assert.equal(h.calls.length, 1); assert.equal(h.frames.length, 0);
+  available = true; clock += 1000; await h.controller.tick();
+  assert.equal(h.calls.length, 2); assert.equal(h.frames.length, 1);
+  assert.equal(h.intervals.length, 1); h.controller.stop();
+});
+
+test('monitor rate-limit cooldown is respected before automatic retry', async () => {
+  let clock = now;
+  const h = harness(async () => ({ ok: false, status: 429, headers: new Headers({ 'Retry-After': '90' }) }));
+  h.environment.Date.now = () => clock;
+  h.controller.start('intensity'); await flush();
+  clock += 89999; await h.controller.tick(); assert.equal(h.calls.length, 1);
+  clock++; await h.controller.tick(); assert.equal(h.calls.length, 2); h.controller.stop();
+});
+
+test('an old 404 cannot stop or delay a replacement monitor metric', async () => {
+  let release;
+  const h = harness(url => url.includes('intensity') ? new Promise(resolve => { release = resolve; }) : { ok: true, json: async () => snapshot });
+  h.controller.start('intensity'); h.controller.start('acceleration'); await flush();
+  release({ ok: false, status: 404 }); await flush();
+  assert.equal(h.states.at(-1).phase, 'live'); assert.equal(h.frames.at(-1).metric, 'acceleration');
+  await h.controller.tick(); assert.equal(h.calls.length, 3); h.controller.stop();
+});
+
+test('production app connects the monitor on page startup without an audio or location action', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /selectMonitorMetric\('intensity'\);/);
+  assert.ok(app.indexOf("selectMonitorMetric('intensity');") < app.indexOf('if (autoLocation)'));
 });
 
 test('stale frames show delayed status instead of being labelled live', async () => {

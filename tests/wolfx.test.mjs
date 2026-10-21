@@ -37,6 +37,60 @@ test('Wolfx preserves received report values and rejects malformed data', () => 
   assert.equal(wolfxReport({ ...data, isAssumption: true }).report.earthquake.hypocenter.latitude, undefined);
   assert.equal(wolfxReport(data, Date.now() + 180000).stale, true);
 });
+test('Wolfx accepts cancellation status only for cancellation reports without marking it as training', () => {
+  const data = { ...fixture(), Issue: { Status: '取り消し' }, Serial: 2, isCancel: true,
+    Hypocenter: '', Latitude: 0, Longitude: 0, Magnitude: 0, Depth: 0, MaxIntensity: '不明' };
+  const parsed = wolfxReport(data);
+  assert.equal(parsed.training, false);
+  assert.equal(parsed.report.test, false);
+  assert.equal(parsed.report.cancelled, true);
+  assert.equal(parsed.report.issue.eventId, data.EventID);
+  assert.equal(parsed.report.issue.serial, 2);
+  assert.equal(parsed.report.earthquake, undefined);
+  assert.deepEqual(parsed.report.areas, []);
+  assert.equal(wolfxReport(data, Date.now() + 180000).stale, true);
+  assert.throws(() => wolfxReport({ ...data, isCancel: false }));
+  assert.throws(() => wolfxReport({ ...data, isCancel: 'true' }));
+  assert.throws(() => wolfxReport({ ...data, Issue: { Status: 'unknown' } }));
+  assert.equal(wolfxReport({ ...data, isTraining: true }).training, true);
+  for (const status of ['通常', '訓練', '試験']) {
+    assert.equal(wolfxReport({ ...data, Issue: { Status: status } }).training, status !== '通常');
+  }
+});
+test('cancellation messages stay separate from training and old cancellations cannot replay alerts', () => {
+  const sockets = [], timers = new Map(), received = [], statuses = []; let id = 0;
+  const tracker = createEEWTracker();
+  class Socket { constructor() { sockets.push(this); } send() {} close() { this.onclose?.(); } }
+  const feed = createWolfxFeed({ environment: { WebSocket: Socket,
+    setTimeout(fn) { timers.set(++id, fn); return id; }, clearTimeout(id) { timers.delete(id); } },
+  onData: (report, options) => received.push({ report, options, tracked: tracker(report, options) }),
+  onStatus: status => statuses.push(status) });
+  const active = fixture();
+  const cancel = { ...active, Issue: { Status: '取り消し' }, Serial: 2, isCancel: true };
+  const send = data => sockets[0].onmessage({ data: JSON.stringify(data) });
+  feed.start(); sockets[0].onopen();
+  send({ ...cancel, AnnouncedTime: '2020/01/01 00:00:00' });
+  assert.equal(received.length, 0);
+  assert.equal(statuses.at(-1).phase, 'live');
+  assert.match(statuses.at(-1).text, /過去の最終受信情報/);
+  send({ ...cancel, EventID: 'UNMATCHED-TEST-ONLY', OriginTime: new Date(Date.now() - 60000).toISOString() });
+  assert.equal(received[0].report.unmatchedCancel, true);
+  assert.equal(received[0].report.test, false);
+  assert.equal(received[0].options.silent, false);
+  assert.equal(received[0].tracked.sound, false);
+  assert.match(statuses.at(-1).text, /取消報受信/);
+  send(active);
+  assert.equal(received[1].tracked.sound, true);
+  send(cancel);
+  assert.equal(received[2].report.unmatchedCancel, false);
+  assert.equal(received[2].tracked.info.training, false);
+  assert.equal(received[2].tracked.info.cancelled, true);
+  assert.equal(received[2].tracked.sound, false);
+  send({ ...cancel, isCancel: false });
+  assert.equal(received.length, 3);
+  assert.equal(statuses.at(-1).phase, 'error');
+  feed.stop(); assert.equal(timers.size, 0);
+});
 test('socket queries once, ignores historical reports, silences training, and closes without reconnect', () => {
   const sockets = [], timers = new Map(), received = []; let id = 0;
   class Socket { constructor(url) { assert.equal(url, WOLFX_EEW_SOCKET); sockets.push(this); this.sent = []; } send(value) { this.sent.push(value); } close() { this.closed = true; this.onclose?.(); } }

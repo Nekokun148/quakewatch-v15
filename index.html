@@ -113,6 +113,21 @@
       </section>
 
       <section class="card">
+        <h2>DMDATA 共有受信</h2>
+        <p id="dmdataSharedStatus" class="muted" role="status" aria-live="polite">共有DMDATA / 配信サーバー準備中</p>
+        <p class="muted">警報・通常の地震情報のみ。予報は各自のAPIキーで受信します。</p>
+      </section>
+
+      <section id="taiwanReports" class="card taiwan-reports" aria-labelledby="taiwanHeading">
+        <h2 id="taiwanHeading">台湾の地震情報</h2>
+        <label class="alarm-toggle"><input id="taiwanConsent" type="checkbox" aria-describedby="taiwanSource">台湾情報の受信を許可</label>
+        <p id="taiwanSource" class="muted">出典：台湾 中央氣象署（CWA）／公式RSSの見出しのみ・EEWではありません</p>
+        <p id="taiwanStatus" class="muted" role="status" aria-live="polite">未許可・未接続</p>
+        <ul id="taiwanItems" class="taiwan-items"></ul>
+        <p class="muted"><a href="https://www.cwa.gov.tw/V8/C/E/index.html" target="_blank" rel="noopener noreferrer">中央氣象署の地震情報</a> · <a href="https://www.cwa.gov.tw/V8/C/S/eservice/rss.html" target="_blank" rel="noopener noreferrer">RSS利用条件</a></p>
+      </section>
+
+      <section class="card">
         <h2>YDITS 緊急地震速報</h2>
         <p id="yditsFeedStatus" class="muted" role="status">サーバー1へ接続準備中</p>
         <p id="wolfxFeedStatus" class="muted" role="status">Wolfx / 待機（YDITS優先・障害時のみ代替）</p>

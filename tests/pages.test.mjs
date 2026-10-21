@@ -75,6 +75,24 @@ test('unified screen places both metrics on one geographic map, with no separate
   assert.ok(!app.includes('selectMapView'));
 });
 
+test('shared relay configuration is optional, contains only a public HTTPS URL and never ships server modules', async () => {
+  const endpoint = 'https://relay.example/api/dmdata/stream';
+  await build({ monitorApiBase: 'https://relay.example/api/strong-motion/', sharedDmdataUrl: endpoint });
+  const html = await readFile(new URL('dist/index.html', root), 'utf8');
+  assert.match(html, /data-dmdata-shared-url="https:\/\/relay.example\/api\/dmdata\/stream"/);
+  assert.match(html, /data-kmoni-api-base="https:\/\/relay.example\/api\/strong-motion\/"/);
+  assert.deepEqual(await filesAt(new URL('dist/', root)), [...PUBLIC_FILES, '.nojekyll'].sort());
+  assert.ok(PUBLIC_FILES.includes('js/dmdata-shared.js'));
+  assert.ok(PUBLIC_FILES.every(file => !file.startsWith('workers/') && !/secret|\.dev.vars|\.env/.test(file)));
+  for (const file of PUBLIC_FILES) assert.doesNotMatch(await readFile(new URL('dist/' + file, root), 'utf8'), /DMDATA_API_KEY|SHARED_ENABLED/);
+  for (const sharedDmdataUrl of ['http://relay.example/api/dmdata/stream', 'https://user:password@relay.example/api/dmdata/stream',
+    'https://relay.example/api/dmdata/stream?apiKey=TEST', 'https://relay.example/api/dmdata/stream#TEST', 'https://relay.example/other']) {
+    await assert.rejects(build({ sharedDmdataUrl }));
+  }
+  await build({ monitorApiBase: '', sharedDmdataUrl: '' });
+  assert.doesNotMatch(await readFile(new URL('dist/index.html', root), 'utf8'), /data-dmdata-shared-url/);
+});
+
 test('speech voice menu is labelled and connected without starting playback on selection', async () => {
   const html = await readFile(new URL('index.html', root), 'utf8');
   assert.match(html, /<label[^>]*for="speechVoice"/);

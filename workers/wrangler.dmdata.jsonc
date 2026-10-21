@@ -1,0 +1,11 @@
+{
+  "name": "quakewatch-v15-dmdata",
+  "main": "dmdata-shared.mjs",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": { "SHARED_ENABLED": "false", "MAX_CLIENTS": "64" },
+  "durable_objects": { "bindings": [{ "name": "DMDATA_SHARED", "class_name": "DmdataSharedHub" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DmdataSharedHub"] }],
+  "observability": { "enabled": false }
+}

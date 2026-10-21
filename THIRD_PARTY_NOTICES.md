@@ -1,5 +1,15 @@
 # Map Data
 
+## Central Weather Administration (Taiwan) RSS Headlines
+
+The optional Taiwan panel uses the official CWA warning/advisory RSS:
+https://www.cwa.gov.tw/rss/Data/cwa_warning.xml
+RSS conditions: https://www.cwa.gov.tw/V8/C/S/eservice/rss.html
+This personal, noncommercial reader shows original earthquake headlines with
+source attribution and links back to CWA. It does not extract or derive quake
+parameters, intensity scales, forecasts, maps, audio, or alerts from the RSS.
+The relay preserves the original RSS bytes. No RSS snapshot is bundled.
+
 ## Natural Earth
 
 The clipped basemap comes from Natural Earth 1:10m administrative country data.

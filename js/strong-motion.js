@@ -14,6 +14,8 @@ export function createStrongMotionController({
   let enabled = false;
   let busy = false;
   let lastStamp = '';
+  let retryAt = 0;
+  const now = () => environment.Date?.now() ?? Date.now();
 
   function loadImage(url, signal) {
     return new Promise((resolve, reject) => {
@@ -37,7 +39,7 @@ export function createStrongMotionController({
   }
 
   async function tick() {
-    if (!enabled || busy || environment.document?.hidden) return;
+    if (!enabled || busy || environment.document?.hidden || now() < retryAt) return;
     busy = true;
     const episode = generation;
     request = new AbortController();
@@ -47,13 +49,21 @@ export function createStrongMotionController({
       const url = new URL('latest', base);
       url.searchParams.set('metric', metric);
       const response = await fetcher(url.href, { cache: 'no-store', signal: currentRequest.signal });
+      if (episode !== generation || currentRequest.signal.aborted) return;
       if (response.status === 404) {
-        stop();
-        onStatus('unavailable', '強震モニタ中継APIがありません（公式サイトで確認できます）');
+        retryAt = now() + 30000;
+        onStatus('unavailable', '強震モニタ中継APIがありません・30秒後に自動再接続');
+        return;
+      }
+      if (response.status === 429) {
+        const seconds = Number(response.headers?.get('Retry-After'));
+        retryAt = now() + Math.max(60000, Number.isFinite(seconds) ? Math.min(seconds * 1000, 3600000) : 0);
+        onStatus('error', '強震モニタ中継の回数制限・自動再接続待ち');
         return;
       }
       if (!response.ok) throw new Error('Source unavailable');
       const data = await response.json();
+      if (episode !== generation || currentRequest.signal.aborted) return;
       const observed = Date.parse(data.observedAt);
       if (!/^20\d{12}$/.test(data.timestamp || '') || !Number.isFinite(observed)) throw new Error('Invalid observation');
       const image = new URL(data.image, base);
@@ -92,6 +102,7 @@ export function createStrongMotionController({
     stop();
     metric = value;
     lastStamp = '';
+    retryAt = 0;
     enabled = true;
     onStatus('loading', '公式観測画像を取得中');
     timer = environment.setInterval(tick, MONITOR_INTERVAL);

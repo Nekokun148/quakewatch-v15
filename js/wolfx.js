@@ -9,9 +9,9 @@ export function wolfxReport(data, now = Date.now()) {
   const origin = parseReportTime(data?.OriginTime);
   if (!issued || typeof data.EventID !== 'string' || !data.EventID || !Number.isInteger(data.Serial) || data.Serial < 1
     || !['isTraining', 'isAssumption', 'isWarn', 'isFinal', 'isCancel'].every(key => typeof data[key] === 'boolean')
-    || !['通常', '訓練', '試験'].includes(data.Issue?.Status)
+    || !(['通常', '訓練', '試験'].includes(data.Issue?.Status) || (data.isCancel && data.Issue?.Status === '取り消し'))
     || (!data.isCancel && (!origin || typeof data.Hypocenter !== 'string' || !Object.hasOwn(scales, data.MaxIntensity)))) throw new Error('Wolfx schema');
-  const training = data.isTraining || data.Issue.Status !== '通常';
+  const training = data.isTraining || ['訓練', '試験'].includes(data.Issue.Status);
   const coordinates = !data.isAssumption && typeof data.Latitude === 'number' && typeof data.Longitude === 'number'
     && Number.isFinite(data.Latitude) && Number.isFinite(data.Longitude) && Math.abs(data.Latitude) <= 90
     && Math.abs(data.Longitude) <= 180 && (data.Latitude !== 0 || data.Longitude !== 0);
@@ -69,7 +69,7 @@ export function createWolfxFeed({ environment = window, onData = () => {}, onSta
         else { receivedEvents.add(key); if (receivedEvents.size > 50) receivedEvents.delete(receivedEvents.values().next().value); }
         onData(parsed.report, { silent: parsed.training });
       }
-      status('live', parsed.stale ? '過去の最終受信情報・新しい速報待機' : parsed.training ? '訓練情報受信（自動警報なし）' : '速報受信');
+      status('live', parsed.stale ? '過去の最終受信情報・新しい速報待機' : parsed.training ? '訓練情報受信（自動警報なし）' : parsed.report.cancelled ? '取消報受信' : '速報受信');
     };
     ws.onerror = fail; ws.onclose = fail;
   }

@@ -200,6 +200,16 @@ button:disabled {
 .map-source { display: flex; flex-wrap: wrap; gap: 5px 14px; padding: 6px 12px; border-top: 1px solid #45464d; font-size: 10px; color: #b6b9c1; }
 .map-source a { color: #afcebd; }
 .city-label { color: #c4c5ca; font-size: 10px; text-align: center; text-shadow: 0 1px 2px #202126; white-space: nowrap; }
+.monitor-highlights { position: absolute; inset: 0; z-index: 480; pointer-events: none; overflow: hidden; }
+.monitor-highlight-label { position: absolute; height: 88px; padding-left: 8px; border-left: 2px solid #b6ff66; color: #b6ff66; letter-spacing: 0; line-height: 1.4; overflow-wrap: anywhere; text-shadow: -1px -1px 2px #101518, 1px -1px 2px #101518, -1px 1px 2px #101518, 1px 1px 2px #101518; }
+.monitor-highlight-label strong { display: block; font-size: 16px; line-height: 21px; }
+.monitor-highlight-label span { display: block; margin-top: 2px; font-size: 12px; }
+.monitor-highlight-label small { display: block; color: #e2f0d9; font-size: 11px; }
+.quake-highlight-label { position: absolute; z-index: 480; pointer-events: none; padding-left: 8px; border-left: 2px solid #b6ff66; color: #b6ff66; line-height: 1.4; overflow-wrap: anywhere; letter-spacing: 0; text-shadow: -1px -1px 2px #101518, 1px -1px 2px #101518, -1px 1px 2px #101518, 1px 1px 2px #101518; }
+.quake-highlight-label[hidden] { display: none; }
+.quake-highlight-label strong { display: block; font-size: 17px; line-height: 22px; }
+.quake-highlight-label span { display: block; font-size: 14px; }
+.quake-highlight-label small { display: block; font-size: 10px; color: #e2f0d9; }
 
 .monitor-tabs { display: flex; gap: 4px; padding: 0 12px 8px; }
 .monitor-tabs button { flex: 1; padding: 8px 6px; font-size: 12px; border-radius: 4px; background: transparent; }
@@ -493,6 +503,14 @@ button:disabled {
   stroke: #8d9bb1;
   stroke-width: 2;
 }
+
+.taiwan-reports { min-width: 0; }
+.taiwan-items { margin: 8px 0; padding-left: 18px; max-height: 240px; overflow-y: auto; }
+.taiwan-items li { margin: 8px 0; }
+.taiwan-items a { overflow-wrap: anywhere; }
+.taiwan-reports a { color: #98dce5; }
+.taiwan-reports a:focus-visible { outline: 2px solid #98dce5; outline-offset: 3px; }
+.taiwan-reports .alarm-toggle { white-space: normal; }
 
 .local-map .label {
   fill: #8fa0b8;

@@ -3,14 +3,23 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PUBLIC_FILES = [
+  'js/quake-highlight.js',
+  'js/monitor-highlights.js',
+  'js/taiwan-feed.js', 'js/taiwan-ui.js',
   'js/wolfx.js',
+  'js/dmdata-shared.js',
   'index.html', 'manifest.json', 'sw.js', 'css/style.css', 'icons/icon.svg',
   'js/app.js', 'js/observations.js', 'js/observation-ui.js', 'js/strong-motion.js', 'js/monitor-map.js', 'js/monitor-changes.js', 'js/ydits.js', 'js/waves.js', 'js/eew.js', 'js/alarm.js', 'js/speech.js', 'js/voicevox.js', 'js/location.js', 'js/dmdata.js', 'js/dmdata-ui.js',
   'js/data.js', 'js/stations.js', 'js/seafloor-stations.js', 'js/sensing-areas.js',
   'data/basemap.geojson', 'data/monitor-points.json', 'THIRD_PARTY_NOTICES.md'
 ];
 
-export async function build({ monitorApiBase = process.env.KMONI_API_BASE || '' } = {}) {
+export async function build({ monitorApiBase = process.env.KMONI_API_BASE || '', sharedDmdataUrl = process.env.DMDATA_SHARED_URL || '' } = {}) {
+  if (sharedDmdataUrl) {
+    const { sharedStreamUrl } = await import('../js/dmdata-shared.js');
+    sharedStreamUrl(sharedDmdataUrl);
+    if (/["'<>\s]/.test(sharedDmdataUrl)) throw new Error('Invalid shared relay');
+  }
   let monitorUrl;
   if (monitorApiBase) {
     monitorUrl = new URL(monitorApiBase);
@@ -42,6 +51,11 @@ export async function build({ monitorApiBase = process.env.KMONI_API_BASE || '' 
     const html = await readFile(htmlPath, 'utf8');
     if (!html.includes('<body>')) throw new Error('Missing monitor configuration target');
     await writeFile(htmlPath, html.replace('<body>', `<body data-kmoni-api-base="${monitorUrl.href}">`));
+  }
+  if (sharedDmdataUrl) {
+    const htmlPath = new URL('index.html', destination);
+    const html = await readFile(htmlPath, 'utf8');
+    await writeFile(htmlPath, html.replace(/<body(?=[ >])/, `<body data-dmdata-shared-url="${sharedDmdataUrl}"`));
   }
   await writeFile(new URL('.nojekyll', destination), '');
   console.log(`Pages build: ${PUBLIC_FILES.length + 1} public files`);

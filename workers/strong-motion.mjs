@@ -1,3 +1,5 @@
+import { createTaiwanRssRelay } from './taiwan-rss.mjs';
+
 const SOURCE = 'http://www.kmoni.bosai.go.jp/';
 const ORIGIN = 'https://nekokun148.github.io';
 const PREFIX = '/api/strong-motion/';
@@ -48,6 +50,7 @@ async function readBounded(response, maximum) {
 
 /** @param {{ fetcher?: typeof fetch, now?: () => number, edgeCache?: Pick<Cache, 'match' | 'put'> }} options */
 export function createStrongMotionWorker({ fetcher = fetch, now = Date.now, edgeCache } = {}) {
+  const taiwanRss = createTaiwanRssRelay({ fetcher, now, edgeCache });
   const memory = new Map();
   const pending = new Map();
 
@@ -127,6 +130,15 @@ export function createStrongMotionWorker({ fetcher = fetch, now = Date.now, edge
     });
     if (request.method !== 'GET') return reply('Method not allowed', 405, { Allow: 'GET, OPTIONS' });
     const route = url.pathname.slice(PREFIX.length);
+    if (route === 'taiwan') {
+      if (url.search) return reply('Invalid parameters', 400);
+      try {
+        const bytes = await taiwanRss.read(url.origin, context);
+        return reply(bytes, 200, { 'Content-Type': 'application/xml; charset=utf-8' });
+      } catch (error) {
+        return reply('Taiwan RSS unavailable', error.status === 429 ? 429 : 502, { 'Retry-After': String(Math.max(60, error.retryAfter || 60)) });
+      }
+    }
     const allowed = route === 'latest' ? ['metric'] : route === 'frame' ? ['metric', 'time'] : route === 'asset' ? ['kind'] : null;
     if (!allowed) return reply('Not found', 404);
     if ([...url.searchParams.keys()].some(key => !allowed.includes(key) || url.searchParams.getAll(key).length !== 1)) {

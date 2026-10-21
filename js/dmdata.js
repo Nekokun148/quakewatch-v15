@@ -41,8 +41,8 @@ export function dmdataReport(data, now = Date.now(), { warningOnly = false } = {
   } };
 }
 
-export async function decodeDmdata(message) {
-  if (message?.type !== 'data' || message.format !== 'json' || !['VXSE43', 'VXSE44', 'VXSE45'].includes(message.head?.type)
+export async function decodeDmdata(message, allowedTypes = ['VXSE43', 'VXSE44', 'VXSE45']) {
+  if (message?.type !== 'data' || message.format !== 'json' || !allowedTypes.includes(message.head?.type)
     || typeof message.body !== 'string' || message.body.length > 2000000) throw new Error('format');
   let bytes;
   if (message.encoding === 'base64') bytes = Uint8Array.from(atob(message.body), char => char.charCodeAt(0));
