@@ -42,6 +42,14 @@ const state = {
 };
 
 const $ = id => document.getElementById(id);
+function updateSpeechFallback(info) {
+  const notice = $('speechFallback');
+  notice.hidden = !info;
+  const message = info ? `ブラウザ標準へ切替：${info.message}` : '';
+  if (notice.textContent !== message) notice.textContent = message;
+  notice.dataset.source = info?.source || '';
+  notice.dataset.reason = info?.reason || '';
+}
 mountTaiwan({ apiBase: document.body.dataset.kmoniApiBase || 'api/strong-motion/' });
 const stationCircles = new Map();
 let monitorPoints = [];
@@ -169,7 +177,7 @@ function updateSpeechUi(info) {
   document.body.dataset.qwSpeechCompleted = String(info.completed);
 }
 
-const voicevox = createVoicevoxEnvironment({ environment: window, onStatus: info => {
+const voicevox = createVoicevoxEnvironment({ environment: window, onFallback: updateSpeechFallback, onStatus: info => {
   $('voicevoxConnect').disabled = info.phase === 'connecting';
   $('voicevoxStatus').textContent = info.message;
   $('voicevoxStatus').dataset.phase = info.phase;
@@ -177,7 +185,7 @@ const voicevox = createVoicevoxEnvironment({ environment: window, onStatus: info
   $('cloudVoicevoxStatus').textContent = info.message;
   $('cloudVoicevoxStatus').dataset.phase = info.phase;
 } });
-const speech = createSpeechController({ environment: voicevox.environment, onStatus: updateSpeechUi });
+const speech = createSpeechController({ environment: voicevox.environment, onStatus: updateSpeechUi, onFallback: updateSpeechFallback });
 const voicevoxPreference = createVoicevoxPreference({ voicevox, speech, environment: window,
   isEnabled: () => state.speech,
   onPreference(preferred) {
@@ -894,10 +902,12 @@ $('speechTest').addEventListener('click', () => {
 
 $('speechVoice').addEventListener('change', event => {
   cloudVoicevox.selectVoice(event.target.value);
+  if (!/^voicevox(?:-cloud)?:/.test(event.target.value)) updateSpeechFallback(null);
 });
 
 $('voicevoxConnect').addEventListener('click', () => { cloudVoicevox.disable(); void voicevoxPreference.connect(); });
-$('browserSpeech').addEventListener('click', () => { cloudVoicevox.disable(); voicevoxPreference.setPreferred(false); });
+$('browserSpeech').addEventListener('click', () => { cloudVoicevox.disable(); voicevoxPreference.setPreferred(false); updateSpeechFallback(null); });
+$('cloudVoicevoxConsent').addEventListener('change', event => { if (!event.target.checked) updateSpeechFallback(null); });
 $('voicevoxPrefer').addEventListener('change', event => {
   const preferred = event.target.checked;
   if (preferred) cloudVoicevox.disable();
@@ -912,7 +922,7 @@ $('readLatest').addEventListener('click', () => {
   }
 });
 
-$('reconnect').addEventListener('click', () => { wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); void yditsFeed.start(); });
+$('reconnect').addEventListener('click', () => { wolfxActive = false; wolfxFeed.stop(); yditsFeed.stop(); void yditsFeed.start(); void strongMotion.tick(); });
 $('alarmToggle').addEventListener('change', async () => {
   if ($('alarmToggle').checked) await alarm.enable();
   else {

@@ -109,5 +109,8 @@ export function createStrongMotionController({
     tick();
   }
 
+  environment.document?.addEventListener?.('visibilitychange', () => {
+    if (!environment.document.hidden) void tick();
+  });
   return { start, stop, tick, asset: kind => new URL(`asset?kind=${encodeURIComponent(kind)}`, base).href };
 }

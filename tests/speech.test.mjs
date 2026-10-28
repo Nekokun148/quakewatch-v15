@@ -10,6 +10,7 @@ function harness(initialVoices = [], localStorage) {
   const listeners = new Map();
   const statuses = [];
   const played = [];
+  const fallbacks = [];
   const synth = {
     cancellations: 0,
     paused: false,
@@ -26,9 +27,9 @@ function harness(initialVoices = [], localStorage) {
     setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer; },
     clearTimeout: id => timers.delete(id)
   };
-  const controller = createSpeechController({ environment, onStatus: status => statuses.push(status) });
+  const controller = createSpeechController({ environment, onStatus: status => statuses.push(status), onFallback: info => fallbacks.push(info) });
   return {
-    controller, synth, timers, played,
+    controller, synth, timers, played, fallbacks,
     status: () => statuses.at(-1),
     voicesChanged(next) { voices = next; listeners.get('voiceschanged')(); },
     finish(utterance = played.at(-1)) { utterance.onstart(); utterance.onend(); },
@@ -64,6 +65,19 @@ test('starts off and only speaks after explicit activation', () => {
   assert.equal(h.status().phase, 'ready');
   assert.equal(h.status().completed, 1);
   assert.equal(h.timers.size, 0);
+});
+
+test('a missing saved cloud voice explains browser fallback only when speech is requested', () => {
+  const browser = { voiceURI: 'browser-ja', name: 'Browser Japanese', lang: 'ja-JP', localService: true };
+  const h = harness([browser], { getItem: () => 'voicevox-cloud:0' });
+  assert.equal(h.fallbacks.length, 0);
+  h.controller.enable();
+  assert.equal(h.fallbacks.length, 0);
+  h.controller.say('模擬文。');
+  assert.equal(h.played[0].voice, browser);
+  assert.equal(h.fallbacks.at(-1).reason, 'preferred-unavailable');
+  assert.match(h.fallbacks.at(-1).message, /外部送信への同意/);
+  assert.equal(h.status().preferredVoice, 'voicevox-cloud:0');
 });
 
 test('late voice discovery prefers a local Japanese voice', () => {

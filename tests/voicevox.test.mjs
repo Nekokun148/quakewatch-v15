@@ -7,7 +7,7 @@ const speakers = [{ name: 'Test speaker', styles: [{ id: 2, name: 'Normal', type
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function harness(fetcher) {
-  const requests = [], audio = [], nativePlayed = [], revoked = [], statuses = [], connections = [];
+  const requests = [], audio = [], nativePlayed = [], revoked = [], statuses = [], connections = [], fallbacks = [];
   const timers = new Map();
   const storage = new Map();
   let id = 0;
@@ -32,9 +32,9 @@ function harness(fetcher) {
       return { ok: true, blob: async () => new Blob(['mock wav'], { type: 'audio/wav' }) };
     }
   };
-  const adapter = createVoicevoxEnvironment({ environment, onStatus: value => connections.push(value) });
+  const adapter = createVoicevoxEnvironment({ environment, onStatus: value => connections.push(value), onFallback: info => fallbacks.push(info) });
   const controller = createSpeechController({ environment: adapter.environment, onStatus: value => statuses.push(value) });
-  return { adapter, controller, environment, requests, audio, nativePlayed, revoked, statuses, connections, timers, storage };
+  return { adapter, controller, environment, requests, audio, nativePlayed, revoked, statuses, connections, fallbacks, timers, storage };
 }
 
 test('only returned talk styles are exposed and malformed styles are rejected', () => {
@@ -264,6 +264,22 @@ test('failed auto-discovery leaves browser speech usable without repeating netwo
   assert.equal(h.nativePlayed.length, 1);
   assert.equal(h.nativePlayed[0].voice.voiceURI, 'browser-ja');
   assert.equal(h.statuses.at(-1).enabled, true);
+  assert.equal(h.fallbacks.at(-1).reason, 'discovery');
+  assert.match(h.fallbacks.at(-1).message, /未特定/);
+});
+
+test('local query and synthesis failures expose their stage and HTTP code, not private response bodies', async () => {
+  for (const stage of ['query', 'synthesis']) {
+    const h = harness(url => url.endsWith('/speakers') ? { ok: true, json: async () => speakers }
+      : url.includes('/audio_query') && stage === 'synthesis' ? { ok: true, json: async () => ({}) }
+        : { ok: false, status: 503, text: async () => 'private server detail' });
+    await h.adapter.connect(); h.adapter.setBrowserFallback(true);
+    h.controller.setVoice('voicevox:2'); h.controller.enable(); h.controller.say('模擬文。'); await flush();
+    assert.equal(h.nativePlayed.length, 1);
+    assert.equal(h.fallbacks.at(-1).reason, stage);
+    assert.match(h.fallbacks.at(-1).message, /HTTP 503/);
+    assert.doesNotMatch(h.fallbacks.at(-1).message, /private server/);
+  }
 });
 
 test('discovery timeout completes even if fetch ignores abort and ignores its late voices', async () => {

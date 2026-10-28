@@ -1,4 +1,4 @@
-import { createCloudVoicevox, CLOUD_VOICE_PREFIX } from './cloud-voicevox.js';
+import { createCloudVoicevox, cloudFallbackDetails, CLOUD_VOICE_PREFIX } from './cloud-voicevox.js';
 
 export const VOICEVOX_BASE = 'http://127.0.0.1:50021';
 
@@ -13,7 +13,7 @@ export function voicevoxVoices(speakers) {
   });
 }
 
-export function createVoicevoxEnvironment({ environment = window, onStatus = () => {}, onCloudStatus = () => {} } = {}) {
+export function createVoicevoxEnvironment({ environment = window, onStatus = () => {}, onCloudStatus = () => {}, onFallback = () => {} } = {}) {
   const native = environment.speechSynthesis;
   const browserSupported = Boolean(native && environment.SpeechSynthesisUtterance);
   const localSupported = Boolean(environment.fetch && environment.Audio && environment.URL?.createObjectURL);
@@ -25,7 +25,12 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
   let browserFallback = false;
   const notify = () => listeners.forEach(listener => listener());
   const fetcher = environment.fetch?.bind(environment);
-  const cloud = createCloudVoicevox({ environment, onStatus(info) { notify(); onCloudStatus(info); } });
+  const cloud = createCloudVoicevox({ environment, onStatus(info) {
+    notify(); onCloudStatus(info);
+    if (info.phase === 'fallback' && !active?.utterance.voice?.voiceURI?.startsWith(CLOUD_VOICE_PREFIX)) {
+      onFallback(cloudFallbackDetails(info));
+    }
+  } });
 
   async function connect() {
     if (connecting) return connecting;
@@ -61,6 +66,9 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
         onStatus({ phase: 'error', message: browserSupported
           ? 'VOICEVOX接続不可・ブラウザ標準を使用（エンジン未起動／接続許可など）'
           : 'VOICEVOX接続不可・ブラウザ標準も未対応' });
+        if (browserSupported && browserFallback) onFallback({ source: 'local', reason: 'discovery',
+          message: controller.signal.aborted ? 'PC内VOICEVOXの接続確認が5秒以内に完了しませんでした。'
+            : 'PC内VOICEVOXの話者を取得できませんでした（未起動・通信・接続許可等は未特定）。' });
         return false;
       } finally {
         environment.clearTimeout(timer);
@@ -122,20 +130,25 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     record.controller = controller;
     const options = { method: 'POST', signal: controller.signal, cache: 'no-store', redirect: 'error',
       credentials: 'omit', referrerPolicy: 'no-referrer' };
+    let stage = 'query', httpStatus = 0;
     try {
       const queryUrl = new URL(`${VOICEVOX_BASE}/audio_query`);
       queryUrl.searchParams.set('text', utterance.text);
       queryUrl.searchParams.set('speaker', String(speaker));
       const queryResponse = await fetcher(queryUrl.href, options);
+      httpStatus = queryResponse.status;
       if (!queryResponse.ok) throw new Error('audio_query');
       const query = await queryResponse.json();
       if (active !== record) return;
       query.speedScale = utterance.rate;
       query.volumeScale = Math.max(0, Math.min(1, utterance.volume));
+      stage = 'synthesis'; httpStatus = 0;
       const response = await fetcher(`${VOICEVOX_BASE}/synthesis?speaker=${speaker}`, {
         ...options, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query)
       });
+      httpStatus = response.status;
       if (!response.ok) throw new Error('synthesis');
+      stage = 'audio';
       const blob = await response.blob();
       if (active !== record) return;
       if (!blob.size || !/^(audio\/|application\/octet-stream)/i.test(blob.type)) throw new Error('audio');
@@ -144,15 +157,21 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       record.audio = audio;
       audio.onended = () => settle(record);
       audio.onerror = () => settle(record, 'audio-hardware');
+      stage = 'playback';
       await audio.play();
-      if (active === record) utterance.onstart?.();
+      if (active === record) { onFallback(null); utterance.onstart?.(); }
     } catch (error) {
       if (active !== record) return;
       if (browserFallback && browserSupported && error.name !== 'NotAllowedError') {
         dispose(record);
         voices = [];
         notify();
-        onStatus({ phase: 'fallback', message: 'VOICEVOX合成失敗・ブラウザ標準で読み上げを継続' });
+        const message = ({ query: 'PC内VOICEVOXの音声クエリを取得できませんでした。',
+          synthesis: 'PC内VOICEVOXの音声合成に失敗しました。', audio: 'PC内VOICEVOXから有効な音声データを取得できませんでした。',
+          playback: 'PC内VOICEVOX音声を再生できませんでした。' })[stage]
+          + (Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599 ? `（HTTP ${httpStatus}）` : '');
+        onStatus({ phase: 'fallback', message: message + ' ブラウザ標準で読み上げを継続' });
+        onFallback({ source: 'local', reason: stage, message });
         speakBrowser(record);
       } else settle(record, error.name === 'NotAllowedError' ? 'not-allowed' : 'network');
     }
@@ -166,8 +185,10 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       record.fallback = true;
       dispose(record);
       if (error.name === 'NotAllowedError') { settle(record, 'not-allowed'); return; }
+      const details = cloudFallbackDetails(error);
       if (!error.cloudReported) onCloudStatus({ phase: 'fallback',
-        message: 'クラウド音声を利用できません・ブラウザ標準で継続', enabled: cloud.enabled });
+        message: details.message + '・ブラウザ標準で継続', enabled: cloud.enabled, reason: details.reason });
+      onFallback(details);
       speakBrowser(record);
     }
     try {
@@ -184,6 +205,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       await audio.play();
       if (active === record && record.audio === audio) {
         record.started = true;
+        onFallback(null);
         record.utterance.onstart?.();
       }
     } catch (error) { failed(error); }

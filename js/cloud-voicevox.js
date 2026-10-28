@@ -10,11 +10,22 @@ const FAILURE_MESSAGES = {
   network: 'クラウド通信失敗（回線・接続許可等は未特定）',
   service: 'クラウドサーバーの応答エラー',
   synthesis: 'クラウド側で音声合成に失敗しました',
-  response: 'クラウド応答の形式を確認できませんでした'
+  response: 'クラウド応答の形式を確認できませんでした',
+  'not-permitted': 'クラウド音声の外部送信が許可されていません',
+  voice: '選択したクラウド話者が未取得です',
+  input: '読み上げ文が空、またはクラウドの文字数上限を超えています',
+  interval: '合成要求の間隔が2秒未満のため、連続送信を控えました',
+  playback: '取得したクラウド音声の読み込み・再生に失敗しました'
 };
 
 class CloudFailure extends Error {
-  constructor(reason) { super(reason); this.reason = reason; }
+  constructor(reason) { super(FAILURE_MESSAGES[reason]); this.reason = reason; }
+}
+
+export function cloudFallbackDetails(error) {
+  const reason = Object.hasOwn(FAILURE_MESSAGES, error?.reason) ? error.reason : 'playback';
+  return { source: 'cloud', reason, message: FAILURE_MESSAGES[reason],
+    retryAt: Number.isFinite(error?.retryAt) ? error.retryAt : null };
 }
 
 export function cloudVoices(data) {
@@ -145,6 +156,7 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
           : error instanceof CloudFailure ? error.reason : error instanceof TypeError ? 'network' : 'response');
         defer(); lastFailure = failure.reason; reportFailure();
         failure.cloudReported = true;
+        failure.retryAt = retryAt;
         throw failure;
       }
       throw error;
@@ -179,14 +191,16 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
   }
   async function synthesize(utterance, signal) {
     const id = utterance.voice?.voiceURI;
-    if (!enabled || !voices.some(voice => voice.voiceURI === id) || Array.from(utterance.text).length > 120
-      || !utterance.text.trim()) throw new Error('Cloud voice unavailable');
+    if (!enabled) throw new CloudFailure('not-permitted');
+    if (!voices.some(voice => voice.voiceURI === id)) throw new CloudFailure('voice');
+    if (Array.from(utterance.text).length > 120 || !utterance.text.trim()) throw new CloudFailure('input');
     if (now() < retryAt) {
       const failure = new CloudFailure(lastFailure);
       reportFailure(); failure.cloudReported = true;
+      failure.retryAt = retryAt;
       throw failure;
     }
-    if (now() < nextSynthesisAt) throw new Error('Cloud voice unavailable');
+    if (now() < nextSynthesisAt) throw new CloudFailure('interval');
     nextSynthesisAt = now() + 2000;
     return run(signal, async ({ request, wait, checkpoint, waitingForAudio }) => {
       report('synthesizing', 'クラウド合成待ち（最大4秒）');

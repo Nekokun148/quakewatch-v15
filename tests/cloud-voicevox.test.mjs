@@ -207,7 +207,9 @@ test('content type, oversized JSON/audio and invalid state cannot become playabl
 function adapterHarness(fetcher) {
   const h = harness(fetcher);
   h.cloudStatuses = [];
-  h.adapter = createVoicevoxEnvironment({ environment: h.environment, onCloudStatus: info => h.cloudStatuses.push(info) });
+  h.fallbacks = [];
+  h.adapter = createVoicevoxEnvironment({ environment: h.environment, onCloudStatus: info => h.cloudStatuses.push(info),
+    onFallback: info => h.fallbacks.push(info) });
   h.speech = createSpeechController({ environment: h.adapter.environment, onStatus: info => h.statuses.push(info) });
   h.enableCloud = async () => {
     h.adapter.cloud.setEnabled(true); assert.equal(await h.adapter.cloud.connect(), true);
@@ -352,6 +354,51 @@ test('rapid following sentences do not burst synthesis requests', async () => {
   assert.equal(h.requests.length, 4);
   await h.advance(2000); await h.transport.synthesize(utterance);
   assert.equal(h.requests.length, 7);
+});
+
+test('browser fallback explains rapid following sentences without starting another cloud request', async () => {
+  const h = adapterHarness(); await h.enableCloud();
+  h.speech.say('最初の模擬文。次の模擬文。'); await flush();
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.fallbacks.at(-1), null);
+  h.audio[0].onended(); await flush();
+  assert.equal(h.spoken.length, 1);
+  assert.equal(h.fallbacks.at(-1).reason, 'interval');
+  assert.match(h.fallbacks.at(-1).message, /2秒未満/);
+  assert.equal(h.requests.length, 4);
+});
+
+test('cloud timeout retains a public safe reason until actual VOICEVOX playback succeeds', async () => {
+  let never = true;
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names) : never ? new Promise(() => {})
+    : url === CLOUD_SYNTHESIS_URL ? json(ticket) : url.endsWith('status.json')
+      ? json({ success: true, isAudioReady: true, isAudioError: false })
+      : new Response('mock mp3', { headers: { 'Content-Type': 'audio/mpeg' } }));
+  await h.enableCloud(); h.speech.say('期限超過の模擬文。'); await flush(); await h.advance(CLOUD_DEADLINE);
+  assert.equal(h.fallbacks.at(-1).reason, 'timeout');
+  assert.match(h.fallbacks.at(-1).message, /4秒以内/);
+  assert.equal(h.fallbacks.at(-1).retryAt, 134000);
+  h.spoken[0].onend(); await h.advance(30000); never = false;
+  assert.equal(await h.adapter.cloud.connect(), true);
+  assert.equal(h.fallbacks.at(-1).reason, 'timeout');
+  h.speech.say('復旧した模擬文。'); await flush();
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.fallbacks.at(-1), null);
+  h.audio[0].onended();
+});
+
+test('metadata failure and cloud audio loading failure each expose a reason without raw network details', async () => {
+  const blocked = adapterHarness(() => { throw new TypeError('private URL must not appear'); });
+  blocked.adapter.cloud.setEnabled(true);
+  assert.equal(await blocked.adapter.cloud.connect(), false);
+  assert.equal(blocked.fallbacks.at(-1).reason, 'network');
+  assert.doesNotMatch(blocked.fallbacks.at(-1).message, /private URL/);
+  const h = adapterHarness(); await h.enableCloud();
+  h.environment.Audio.prototype.play = async () => { throw new Error('private audio URL'); };
+  h.speech.say('再生失敗の模擬文。'); await flush();
+  assert.equal(h.fallbacks.at(-1).reason, 'playback');
+  assert.doesNotMatch(h.fallbacks.at(-1).message, /private audio URL/);
+  assert.equal(h.spoken.length, 1);
 });
 
 test('consent UI never enables speech, resets on pagehide and cannot select after withdrawal', async () => {

@@ -3,7 +3,7 @@ import { eewInfo } from './eew.js';
 const VOICE_STORAGE_KEY = 'qwSpeechVoice';
 const voiceId = voice => voice.voiceURI || JSON.stringify([voice.name, voice.lang, Boolean(voice.localService)]);
 
-export function createSpeechController({ environment = window, onStatus = () => {} } = {}) {
+export function createSpeechController({ environment = window, onStatus = () => {}, onFallback = () => {} } = {}) {
   const synth = environment.speechSynthesis;
   const supported = Boolean(synth && typeof environment.SpeechSynthesisUtterance === 'function');
   let enabled = false;
@@ -84,6 +84,14 @@ export function createSpeechController({ environment = window, onStatus = () => 
   function playNext() {
     if (!enabled || held || active || !queue.length) return;
     refreshVoice();
+    if (preferredVoice && (!voice || voiceId(voice) !== preferredVoice)) {
+      const cloud = preferredVoice.startsWith('voicevox-cloud:');
+      const local = preferredVoice.startsWith('voicevox:');
+      onFallback({ source: cloud ? 'cloud' : local ? 'local' : 'browser', reason: 'preferred-unavailable',
+        message: cloud ? '選択したクラウド話者が未取得です。外部送信への同意と話者一覧の取得を確認してください。'
+          : local ? '選択したPC内話者が未取得です。VOICEVOXの起動と接続を確認してください。'
+          : '選択した音声が現在の音声一覧にないため、利用可能なブラウザ音声を選びました。' });
+    }
     const utterance = new environment.SpeechSynthesisUtterance(queue.shift());
     utterance.lang = 'ja-JP';
     utterance.rate = 1;

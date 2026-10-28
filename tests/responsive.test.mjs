@@ -63,3 +63,33 @@ test('settings toggle and Escape update accessibility and map space without any 
   handlers['header/keydown']({ key: 'Escape', preventDefault: () => prevented++ });
   assert.equal(prevented, 1);
 });
+
+test('fallback reason stays visible outside closed settings and is cleared only by an explicit clear event', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /<p id="speechFallback"[^>]*role="status"[^>]*aria-live="polite"[^>]*hidden>/);
+  assert.ok(html.indexOf('id="speechFallback"') < html.indexOf('id="settingsPanel"'));
+  const notice = { hidden: true, textContent: '', dataset: {} };
+  const source = app.slice(app.indexOf('function updateSpeechFallback('), app.indexOf('mountTaiwan('));
+  const scope = { $: () => notice };
+  vm.runInNewContext(source, scope);
+  scope.updateSpeechFallback({ source: 'cloud', reason: 'interval', message: '模擬の理由です。' });
+  assert.equal(notice.hidden, false);
+  assert.equal(notice.dataset.reason, 'interval');
+  assert.match(notice.textContent, /ブラウザ標準へ切替：模擬の理由/);
+  scope.updateSpeechFallback(null);
+  assert.equal(notice.hidden, true);
+  assert.equal(notice.textContent, '');
+});
+
+test('manually selecting browser speech clears the old reason without clearing it on a cloud selection', () => {
+  const selection = app.match(/\$\('speechVoice'\)\.addEventListener\('change', event => \{([\s\S]*?)\n\}\);/)[1];
+  const selected = [], cleared = [];
+  const handler = vm.runInNewContext('(event) => {' + selection + '}', {
+    cloudVoicevox: { selectVoice: id => selected.push(id) }, updateSpeechFallback: info => cleared.push(info)
+  });
+  handler({ target: { value: 'voicevox-cloud:0' } });
+  assert.equal(cleared.length, 0);
+  handler({ target: { value: 'browser-ja' } });
+  assert.deepEqual(selected, ['voicevox-cloud:0', 'browser-ja']);
+  assert.deepEqual(cleared, [null]);
+});

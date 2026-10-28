@@ -86,6 +86,35 @@ test('background documents and overlapping polls do not flood the source', async
   assert.equal(h.calls.length, 1);
 });
 
+test('returning to a visible tab resumes the monitor immediately without duplicating its timer', async () => {
+  const h = harness();
+  const handlers = {};
+  h.environment.document.addEventListener = (type, fn) => { handlers[type] = fn; };
+  const controller = createStrongMotionController({ apiBase: 'api/strong-motion/', environment: h.environment,
+    fetcher: async (...args) => { h.calls.push(args); return { ok: true, json: async () => snapshot }; } });
+  h.environment.document.hidden = true;
+  controller.start('intensity'); await flush();
+  assert.equal(h.calls.length, 0);
+  h.environment.document.hidden = false;
+  handlers.visibilitychange(); await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.intervals.length, 1);
+  controller.stop(); handlers.visibilitychange(); await flush();
+  assert.equal(h.calls.length, 1);
+});
+
+test('visible-tab resume and manual ticks never bypass relay rate limits', async () => {
+  const h = harness(), handlers = {};
+  h.environment.document.addEventListener = (type, fn) => { handlers[type] = fn; };
+  let requests = 0;
+  const controller = createStrongMotionController({ apiBase: 'api/strong-motion/', environment: h.environment,
+    fetcher: async () => { requests++; return { ok: false, status: 429, headers: new Headers({ 'Retry-After': '90' }) }; } });
+  controller.start('intensity'); await flush();
+  handlers.visibilitychange(); await controller.tick(); await flush();
+  assert.equal(requests, 1);
+  controller.stop();
+});
+
 test('missing static-host API pauses immediate retries and makes its limitation explicit', async () => {
   const h = harness(async () => ({ ok: false, status: 404 }));
   h.controller.start('intensity'); await flush(); await h.controller.tick();
@@ -127,6 +156,7 @@ test('production app connects the monitor on page startup without an audio or lo
   const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
   assert.match(app, /selectMonitorMetric\('intensity'\);/);
   assert.ok(app.indexOf("selectMonitorMetric('intensity');") < app.indexOf('if (autoLocation)'));
+  assert.match(app, /\$\('reconnect'\)\.addEventListener\('click', [^\n]*strongMotion\.tick\(\)/);
 });
 
 test('stale frames show delayed status instead of being labelled live', async () => {
