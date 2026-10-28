@@ -3,6 +3,20 @@ export const CLOUD_SYNTHESIS_URL = 'https://api.tts.quest/v3/voicevox/synthesis'
 export const CLOUD_VOICE_PREFIX = 'voicevox-cloud:';
 export const CLOUD_DEADLINE = 4000;
 
+const FAILURE_MESSAGES = {
+  timeout: 'クラウド応答が4秒以内に届きませんでした',
+  pending: 'クラウド音声の合成が4秒以内に完了しませんでした',
+  limited: 'クラウドの利用制限中',
+  network: 'クラウド通信失敗（回線・接続許可等は未特定）',
+  service: 'クラウドサーバーの応答エラー',
+  synthesis: 'クラウド側で音声合成に失敗しました',
+  response: 'クラウド応答の形式を確認できませんでした'
+};
+
+class CloudFailure extends Error {
+  constructor(reason) { super(reason); this.reason = reason; }
+}
+
 export function cloudVoices(data) {
   if (!Array.isArray(data) || data.length > 2048) throw new Error('Invalid cloud voices');
   return data.flatMap((name, id) => typeof name === 'string' && name.startsWith('VOICEVOX:') && name.length <= 160
@@ -51,9 +65,14 @@ async function boundedBody(response, maximum) {
 
 export function createCloudVoicevox({ environment = window, onStatus = () => {} } = {}) {
   let enabled = false, generation = 0, voices = [], pending = null, retryAt = 0, nextSynthesisAt = 0;
+  let lastFailure = 'service';
   const controllers = new Set();
   const now = () => environment.Date?.now() ?? Date.now();
-  const report = (phase, message) => onStatus({ phase, message, enabled });
+  const report = (phase, message, details = {}) => onStatus({ phase, message, enabled, ...details });
+  function reportFailure(reason = lastFailure) {
+    const seconds = Math.max(0, Math.ceil((retryAt - now()) / 1000));
+    report('fallback', `${FAILURE_MESSAGES[reason]}・ブラウザ標準を使用（再試行まであと${seconds}秒）`, { reason, retryAt });
+  }
   function defer(value) {
     const seconds = Number(value), date = Date.parse(value || '');
     const wait = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : date - now();
@@ -62,6 +81,7 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
   async function run(signal, task) {
     if (!enabled || now() < retryAt) throw new Error('Cloud not permitted or cooling down');
     const episode = generation, controller = new AbortController();
+    let expired = false, awaitingAudio = false;
     const abort = () => controller.abort();
     const checkpoint = () => {
       if (!enabled || generation !== episode || controller.signal.aborted) throw new DOMException('Cancelled', 'AbortError');
@@ -72,7 +92,7 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
     let timer;
     const deadline = new Promise((_, reject) => {
       controller.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
-      timer = environment.setTimeout(() => controller.abort(), CLOUD_DEADLINE);
+      timer = environment.setTimeout(() => { expired = true; controller.abort(); }, CLOUD_DEADLINE);
     });
     async function request(url, options = {}, audio = false) {
       checkpoint();
@@ -80,10 +100,19 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
         cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer' });
       checkpoint();
       const type = response.headers.get('Content-Type') || '';
+      if (!response.ok) {
+        defer(response.headers.get('Retry-After'));
+        let data;
+        if (/^application\/json\b/i.test(type)) {
+          const blob = await boundedBody(response, 262144);
+          try { data = JSON.parse(await blob.text()); } catch {}
+          checkpoint(); defer(data?.retryAfter);
+        } else await response.body?.cancel();
+        throw new CloudFailure(response.status === 429 || data?.retryAfter != null ? 'limited' : 'service');
+      }
       if (!(audio ? /^audio\/(?:mpeg|mp3)\b/i : /^application\/json\b/i).test(type)) {
-        if (!response.ok) defer(response.headers.get('Retry-After'));
         await response.body?.cancel();
-        throw new Error('Invalid cloud response');
+        throw new CloudFailure('response');
       }
       const blob = await boundedBody(response, audio ? 8388608 : 262144);
       checkpoint();
@@ -93,9 +122,9 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
       }
       const data = JSON.parse(await blob.text());
       checkpoint();
-      if (!response.ok || data?.retryAfter != null) {
+      if (data?.retryAfter != null) {
         defer(response.headers.get('Retry-After')); defer(data?.retryAfter);
-        throw new Error('Cloud unavailable or rate limited');
+        throw new CloudFailure('limited');
       }
       return data;
     }
@@ -109,10 +138,14 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
     }
     try {
       checkpoint();
-      return await Promise.race([task({ request, wait, checkpoint }), deadline]);
+      return await Promise.race([task({ request, wait, checkpoint, waitingForAudio() { awaitingAudio = true; } }), deadline]);
     } catch (error) {
       if (enabled && generation === episode && !signal?.aborted) {
-        defer(); report('fallback', 'クラウド利用不可・ブラウザ標準へ切替（30秒以上待機）');
+        const failure = new CloudFailure(expired ? (awaitingAudio ? 'pending' : 'timeout')
+          : error instanceof CloudFailure ? error.reason : error instanceof TypeError ? 'network' : 'response');
+        defer(); lastFailure = failure.reason; reportFailure();
+        failure.cloudReported = true;
+        throw failure;
       }
       throw error;
     } finally {
@@ -130,7 +163,7 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
   async function connect() {
     if (!enabled) return false;
     if (pending) return pending;
-    if (now() < retryAt) { report('fallback', 'クラウド再接続待ち・ブラウザ標準を使用'); return false; }
+    if (now() < retryAt) { reportFailure(); return false; }
     report('connecting', 'tts.questの話者一覧を確認中');
     const episode = generation;
     const promise = run(null, async ({ request, checkpoint }) => {
@@ -138,7 +171,7 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
       checkpoint();
       if (!found.length) throw new Error('No cloud voices');
       voices = found;
-      report('ready', `クラウド接続確認・${voices.length}音声（非公式tts.quest）`);
+      report('ready', `話者一覧取得済み・${voices.length}音声（音声合成は未確認）`);
       return true;
     }).catch(() => false).finally(() => { if (pending === promise && generation === episode) pending = null; });
     pending = promise;
@@ -147,26 +180,35 @@ export function createCloudVoicevox({ environment = window, onStatus = () => {} 
   async function synthesize(utterance, signal) {
     const id = utterance.voice?.voiceURI;
     if (!enabled || !voices.some(voice => voice.voiceURI === id) || Array.from(utterance.text).length > 120
-      || !utterance.text.trim() || now() < nextSynthesisAt) throw new Error('Cloud voice unavailable');
+      || !utterance.text.trim()) throw new Error('Cloud voice unavailable');
+    if (now() < retryAt) {
+      const failure = new CloudFailure(lastFailure);
+      reportFailure(); failure.cloudReported = true;
+      throw failure;
+    }
+    if (now() < nextSynthesisAt) throw new Error('Cloud voice unavailable');
     nextSynthesisAt = now() + 2000;
-    return run(signal, async ({ request, wait, checkpoint }) => {
+    return run(signal, async ({ request, wait, checkpoint, waitingForAudio }) => {
       report('synthesizing', 'クラウド合成待ち（最大4秒）');
       const data = await request(CLOUD_SYNTHESIS_URL, { method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ speaker: id.slice(CLOUD_VOICE_PREFIX.length), text: utterance.text }).toString() });
-      if (data?.success !== true) throw new Error('Cloud synthesis failed');
+      if (data?.success !== true) throw new CloudFailure('synthesis');
       const urls = cloudAudioUrls(data);
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         const status = await request(urls.status);
-        if (status?.success !== true || status.isAudioError !== false) throw new Error('Cloud synthesis failed');
+        if (status?.success !== true || status.isAudioError === true) throw new CloudFailure('synthesis');
+        if (status.isAudioError !== false) throw new CloudFailure('response');
         if (status.isAudioReady === true) {
           const blob = await request(urls.audio, {}, true);
           checkpoint(); report('ready', 'クラウド音声データ取得済み（非公式tts.quest）');
           return blob;
         }
-        if (status.isAudioReady !== false || attempt === 2) throw new Error('Cloud audio not ready');
+        if (status.isAudioReady !== false) throw new CloudFailure('response');
+        waitingForAudio();
         await wait();
       }
+      throw new CloudFailure('pending');
     });
   }
   report('off', '未許可・未接続');

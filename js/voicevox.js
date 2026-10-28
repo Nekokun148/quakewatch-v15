@@ -166,7 +166,8 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       record.fallback = true;
       dispose(record);
       if (error.name === 'NotAllowedError') { settle(record, 'not-allowed'); return; }
-      onCloudStatus({ phase: 'fallback', message: 'クラウド音声を利用できません・ブラウザ標準で継続', enabled: cloud.enabled });
+      if (!error.cloudReported) onCloudStatus({ phase: 'fallback',
+        message: 'クラウド音声を利用できません・ブラウザ標準で継続', enabled: cloud.enabled });
       speakBrowser(record);
     }
     try {
@@ -237,12 +238,12 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
 export function createVoicevoxPreference({ voicevox, speech, environment = window,
   isEnabled = () => false, onPreference = () => {} }) {
   const storageKey = 'qwPreferVoicevox';
-  let preferred = true, revision = 0, attempted = false, pending = null;
+  let preferred = false, revision = 0, attempted = false, pending = null;
   try {
     const saved = environment.localStorage?.getItem(storageKey);
     const savedVoice = environment.localStorage?.getItem('qwSpeechVoice');
     if (saved === 'true' || saved === 'false') preferred = saved === 'true';
-    else if (savedVoice != null && !savedVoice.startsWith('voicevox:')) preferred = false;
+    else if (savedVoice?.startsWith('voicevox:')) preferred = true;
   } catch {}
   const report = () => { voicevox.setBrowserFallback(preferred); onPreference(preferred); };
   function setPreferred(value, { resetVoice = true } = {}) {

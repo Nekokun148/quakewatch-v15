@@ -153,25 +153,33 @@ test('unavailable local storage does not prevent controller creation', () => {
   assert.doesNotThrow(() => createSpeechController({ environment: adapter.environment }));
 });
 
-function preference(h) {
+function preference(h, { local = false } = {}) {
+  if (local) h.storage.set('qwPreferVoicevox', 'true');
   const values = [];
   const control = createVoicevoxPreference({ voicevox: h.adapter, speech: h.controller, environment: h.environment,
     isEnabled: () => h.statuses.at(-1).enabled, onPreference: value => values.push(value) });
   return { control, values };
 }
 
-test('automatic VOICEVOX preference makes no request on load or while speech is OFF', async () => {
+test('new users default to browser speech and never require a local client, even on activation', async () => {
   const h = harness(), p = preference(h);
-  assert.deepEqual(p.values, [true]);
+  assert.deepEqual(p.values, [false]);
+  assert.equal(await p.control.prepare(), false);
+  h.controller.enable();
   assert.equal(await p.control.prepare(), false);
   assert.equal(h.requests.length, 0);
   assert.equal(h.audio.length, 0);
   assert.equal(h.nativePlayed.length, 0);
-  assert.equal(h.statuses.at(-1).enabled, false);
+  assert.equal(h.statuses.at(-1).enabled, true);
+  h.controller.say('No local client required');
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.nativePlayed.length, 1);
 });
 
 test('activation discovers the same-device engine once and selects an available voice without playback', async () => {
-  const h = harness(), p = preference(h);
+  const h = harness(), p = preference(h, { local: true });
+  assert.equal(await p.control.prepare(), false);
+  assert.equal(h.requests.length, 0);
   h.controller.enable();
   assert.deepEqual(await Promise.all([p.control.prepare(), p.control.prepare()]), [true, true]);
   assert.equal(h.requests.length, 1);
@@ -189,7 +197,7 @@ test('activation discovers the same-device engine once and selects an available 
 test('browser opt-out survives reload and a later discovery cannot overwrite it', async () => {
   let release;
   const h = harness(() => new Promise(resolve => { release = resolve; }));
-  const p = preference(h);
+  const p = preference(h, { local: true });
   h.controller.enable();
   const pending = p.control.prepare();
   await flush();
@@ -226,7 +234,7 @@ test('existing explicit browser choice is preserved and saved VOICEVOX style is 
 test('OFF invalidates pending auto-selection; explicit reconnect remains silent while OFF', async () => {
   let release;
   const h = harness(() => new Promise(resolve => { release = resolve; }));
-  const p = preference(h);
+  const p = preference(h, { local: true });
   h.controller.enable();
   const pending = p.control.prepare();
   await flush();
@@ -247,7 +255,7 @@ test('OFF invalidates pending auto-selection; explicit reconnect remains silent 
 
 test('failed auto-discovery leaves browser speech usable without repeating network attempts', async () => {
   const h = harness(() => { throw new TypeError('Blocked local network or CORS'); });
-  const p = preference(h);
+  const p = preference(h, { local: true });
   h.controller.enable();
   assert.equal(await p.control.prepare(), false);
   assert.equal(await p.control.prepare(), false);
@@ -275,7 +283,7 @@ test('discovery timeout completes even if fetch ignores abort and ignores its la
 
 test('automatic synthesis failure reads the same bulletin once with browser speech and stays enabled', async () => {
   const h = harness(url => url.endsWith('/speakers') ? { ok: true, json: async () => speakers } : { ok: false });
-  const p = preference(h);
+  const p = preference(h, { local: true });
   h.controller.enable();
   assert.equal(await p.control.prepare(), true);
   h.controller.say('Current bulletin');
@@ -294,7 +302,7 @@ test('automatic synthesis failure reads the same bulletin once with browser spee
 });
 
 test('autoplay denial remains visible and is never bypassed by browser fallback', async () => {
-  const h = harness(), p = preference(h);
+  const h = harness(), p = preference(h, { local: true });
   h.environment.Audio.prototype.play = async () => { throw new DOMException('Blocked', 'NotAllowedError'); };
   h.controller.enable();
   await p.control.prepare();

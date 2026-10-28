@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createCloudVoicevox, mountCloudVoicevox, cloudVoices, cloudAudioUrls,
   CLOUD_VOICES_URL, CLOUD_SYNTHESIS_URL, CLOUD_DEADLINE } from '../js/cloud-voicevox.js';
-import { createVoicevoxEnvironment } from '../js/voicevox.js';
+import { createVoicevoxEnvironment, createVoicevoxPreference } from '../js/voicevox.js';
 import { createSpeechController } from '../js/speech.js';
 import { createAlarmAnnouncer } from '../js/alarm.js';
 import { PUBLIC_FILES } from '../scripts/build.mjs';
@@ -158,6 +158,7 @@ test('withdrawal aborts discovery and invalidates replies across re-enable', asy
 
 test('both JSON retryAfter and HTTP Retry-After are respected, including OFF/ON and explicit retries', async () => {
   for (const response of [() => json({ retryAfter: 90 }, { status: 429 }),
+    () => json({ retryAfter: 90 }, { status: 503 }),
     () => json({ success: false }, { status: 429, headers: { 'Retry-After': '90' } })]) {
     const h = harness(url => url === CLOUD_VOICES_URL ? json(names) : response());
     await assert.rejects(h.transport.synthesize(await ready(h)));
@@ -177,8 +178,11 @@ test('polling is bounded and one second apart, then falls back without downloadi
   await flush(); assert.equal(h.requests.length, 3);
   await h.advance(999); assert.equal(h.requests.length, 3);
   await h.advance(1); assert.equal(h.requests.length, 4);
+  await h.advance(1000); assert.equal(h.requests.length, 5);
+  await h.advance(1000); assert.equal(h.requests.length, 6);
   await h.advance(1000); await rejection;
-  assert.equal(h.requests.length, 5);
+  assert.equal(h.requests.length, 6);
+  assert.equal(h.statuses.at(-1).reason, 'pending');
   assert.equal(h.timers.size, 0);
 });
 
@@ -202,7 +206,8 @@ test('content type, oversized JSON/audio and invalid state cannot become playabl
 
 function adapterHarness(fetcher) {
   const h = harness(fetcher);
-  h.adapter = createVoicevoxEnvironment({ environment: h.environment });
+  h.cloudStatuses = [];
+  h.adapter = createVoicevoxEnvironment({ environment: h.environment, onCloudStatus: info => h.cloudStatuses.push(info) });
   h.speech = createSpeechController({ environment: h.adapter.environment, onStatus: info => h.statuses.push(info) });
   h.enableCloud = async () => {
     h.adapter.cloud.setEnabled(true); assert.equal(await h.adapter.cloud.connect(), true);
@@ -229,10 +234,70 @@ test('cloud four-second timeout reads the same sentence once in browser and igno
   await h.advance(CLOUD_DEADLINE);
   assert.equal(h.spoken.length, 1); assert.equal(h.spoken[0].text, '期限付きの模擬文。');
   assert.equal(h.spoken[0].voice.voiceURI, 'browser-ja');
+  assert.equal(h.cloudStatuses.at(-1).reason, 'timeout');
+  assert.match(h.cloudStatuses.at(-1).message, /4秒以内/);
   resolve(json(ticket)); await flush();
   assert.equal(h.requests.length, 2); assert.equal(h.audio.length, 0);
   h.spoken[0].onstart(); h.spoken[0].onend();
   assert.equal(h.statuses.at(-1).enabled, true);
+});
+
+test('audio becoming ready after the third poll still plays within the original four-second deadline', async () => {
+  let polls = 0;
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names) : url === CLOUD_SYNTHESIS_URL ? json(ticket)
+    : url.endsWith('status.json') ? json({ success: true, isAudioReady: ++polls === 4, isAudioError: false })
+      : new Response('mock mp3', { headers: { 'Content-Type': 'audio/mpeg' } }));
+  await h.enableCloud(); h.speech.say('三秒後に完成する模擬文。'); await flush();
+  for (let second = 0; second < 3; second++) await h.advance(1000);
+  assert.equal(polls, 4);
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.spoken.length, 0);
+  assert.equal(h.cloudStatuses.at(-1).phase, 'ready');
+  assert.ok(h.requests.every(r => !r.url.includes('127.0.0.1')));
+  h.audio[0].onended();
+});
+
+test('rate limit reason and remaining wait survive reconnect and browser fallback without more requests', async () => {
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names)
+    : json({ retryAfter: 90 }, { status: 429 }));
+  await h.enableCloud(); h.speech.say('利用制限の模擬文。'); await flush();
+  assert.equal(h.cloudStatuses.at(-1).reason, 'limited');
+  assert.match(h.cloudStatuses.at(-1).message, /あと90秒/);
+  assert.equal(h.spoken.length, 1);
+  h.spoken[0].onend();
+  await h.advance(10000);
+  assert.equal(await h.adapter.cloud.connect(), false);
+  assert.match(h.cloudStatuses.at(-1).message, /あと80秒/);
+  h.speech.say('再試行待ちの模擬文。'); await flush();
+  assert.equal(h.cloudStatuses.at(-1).reason, 'limited');
+  assert.equal(h.spoken.length, 2);
+  assert.equal(h.requests.length, 2);
+});
+
+test('metadata discovery does not claim successful speech and network failures remain distinguishable', async () => {
+  const h = harness(); await ready(h);
+  assert.match(h.statuses.at(-1).message, /音声合成は未確認/);
+  const failed = harness(() => { throw new TypeError('Hidden private network detail'); });
+  failed.transport.setEnabled(true);
+  assert.equal(await failed.transport.connect(), false);
+  assert.equal(failed.statuses.at(-1).reason, 'network');
+  assert.doesNotMatch(failed.statuses.at(-1).message, /Hidden private/);
+});
+
+test('cloud voice preference and activation work with no local-client discovery', async () => {
+  const h = adapterHarness();
+  h.storage.set('qwSpeechVoice', 'voicevox-cloud:0');
+  const preference = createVoicevoxPreference({ voicevox: h.adapter, speech: h.speech, environment: h.environment,
+    isEnabled: () => h.statuses.at(-1).enabled });
+  h.speech.enable();
+  assert.equal(await preference.prepare(), false);
+  assert.equal(h.requests.length, 0);
+  await h.enableCloud();
+  h.speech.say('アプリ不要の模擬文。'); await flush();
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.spoken.length, 0);
+  assert.ok(h.requests.every(r => new URL(r.url).protocol === 'https:' && !r.url.includes('127.0.0.1')));
+  h.audio[0].onended();
 });
 
 test('OFF, interruption and alarm hold abort old requests without late speech', async () => {

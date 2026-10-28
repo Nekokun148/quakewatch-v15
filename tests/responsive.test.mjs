@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 const css = await readFile(new URL('../css/style.css', import.meta.url), 'utf8');
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
 test('epicenter icon remains centered at compact fixed size with a white outline', () => {
@@ -21,4 +22,44 @@ test('responsive layouts include tablet orientation, safe areas and touch target
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /width=device-width,initial-scale=1,viewport-fit=cover/);
   assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
+});
+
+test('compact header starts with settings closed while retaining audio, cloud and connection controls', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="settingsToggle"[^>]*aria-expanded="false"[^>]*aria-controls="settingsPanel"/);
+  assert.match(html, /<section id="settingsPanel"[^>]*hidden>/);
+  for (const id of ['alarmToggle', 'speechToggle', 'speechVoice', 'cloudVoicevoxConsent', 'voicevoxConnect', 'locationToggle', 'reconnect']) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
+  assert.match(html, /id="alarmSummary"/);
+  assert.match(html, /id="speechSummary"/);
+  assert.match(css, /\.settings-panel\s*\{[^}]*max-height:[^}]*overflow-y: auto/);
+  assert.match(css, /\[hidden\]\s*\{\s*display: none !important/);
+  assert.match(html, /<details class="map-legend">/);
+  assert.doesNotMatch(html.match(/<details class="map-legend"[^>]*>/)[0], /open/);
+  assert.match(css, /\.region\s*\{[^}]*border-radius: 0;[^}]*background: transparent/);
+});
+
+test('settings toggle and Escape update accessibility and map space without any audio or feed actions', () => {
+  const handlers = {}, attributes = {};
+  let layouts = 0, focused = 0, prevented = 0;
+  const button = { setAttribute: (key, value) => { attributes[key] = value; }, focus: () => focused++,
+    addEventListener: (type, fn) => { handlers['button/' + type] = fn; } };
+  const panel = { hidden: true };
+  const topbar = { addEventListener: (type, fn) => { handlers['header/' + type] = fn; } };
+  const source = app.slice(app.indexOf('function setSettingsOpen('), app.indexOf('const scaleText'));
+  vm.runInNewContext(source, { $: id => id === 'settingsPanel' ? panel : button, topbar, updateTopbarHeight: () => layouts++ });
+  handlers['button/click']();
+  assert.equal(panel.hidden, false);
+  assert.equal(attributes['aria-expanded'], 'true');
+  handlers['header/keydown']({ key: 'Tab' });
+  assert.equal(panel.hidden, false);
+  handlers['header/keydown']({ key: 'Escape', preventDefault: () => prevented++ });
+  assert.equal(panel.hidden, true);
+  assert.equal(attributes['aria-expanded'], 'false');
+  assert.equal(focused, 1);
+  assert.equal(prevented, 1);
+  assert.equal(layouts, 2);
+  handlers['header/keydown']({ key: 'Escape', preventDefault: () => prevented++ });
+  assert.equal(prevented, 1);
 });

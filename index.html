@@ -12,12 +12,22 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
+    <div class="app-brand">
       <h1>QuakeWatch ver15</h1>
       <time id="currentTime" class="current-time" aria-label="現在時刻 日本時間"></time>
-      <p id="status">接続準備中…</p>
     </div>
-    <div class="controls">
+    <div class="header-tools">
+      <div class="audio-summary" aria-label="音声の状態">
+        <span id="alarmSummary">警報音 OFF</span>
+        <span id="speechSummary">読み上げ OFF</span>
+      </div>
+      <button id="settingsToggle" type="button" aria-expanded="false" aria-controls="settingsPanel" title="音声・接続設定">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+        <span class="settings-label">設定</span>
+      </button>
+    </div>
+    <p id="status">接続準備中…</p>
+    <section id="settingsPanel" class="controls settings-panel" aria-label="音声・接続設定" hidden>
       <div class="alarm-control">
         <div class="alarm-actions">
           <label class="alarm-toggle"><input id="alarmToggle" type="checkbox">警報音</label>
@@ -38,25 +48,28 @@
           <span>読み上げの声</span>
           <select id="speechVoice" disabled><option value="">自動選択（日本語）</option></select>
         </label>
-        <div class="voicevox-control">
-          <label class="alarm-toggle" title="読み上げON時に同じ端末のVOICEVOXへ接続を試み、利用できれば次の読み上げから使用"><input id="voicevoxPrefer" type="checkbox" aria-describedby="voicevoxCompatibility" checked>VOICEVOX優先</label>
-          <button id="browserSpeech" type="button" title="ブラウザ標準の日本語音声を選択">ブラウザ標準</button>
-          <button id="voicevoxConnect" type="button" aria-describedby="voicevoxCompatibility">VOICEVOX 接続</button>
-          <span id="voicevoxStatus" role="status" aria-live="polite">VOICEVOX未接続（この端末）</span>
-        </div>
-        <p id="voicevoxCompatibility" class="speech-status">この端末のVOICEVOX連携はPC限定です。クラウド音声は別途同意が必要です。</p>
-        <details class="cloud-voicevox">
-          <summary>クラウドVOICEVOX（任意）</summary>
+        <button id="browserSpeech" class="browser-speech" type="button" title="ブラウザ標準の日本語音声を選択">ブラウザ標準</button>
+        <details class="cloud-voicevox" open>
+          <summary>クラウドVOICEVOX（アプリ不要）</summary>
           <p id="cloudVoicevoxNotice">非公式のtts.questへ読み上げ文を送信します。生成音声のURLを知る人は音声を取得できる場合があります。利用制限・遅延時はブラウザ標準へ切り替えます。同意は保存しません。</p>
           <label class="alarm-toggle"><input id="cloudVoicevoxConsent" type="checkbox" aria-describedby="cloudVoicevoxNotice">外部送信に同意して使う</label>
-          <button id="cloudVoicevoxRetry" type="button" disabled>接続を再確認</button>
+          <button id="cloudVoicevoxRetry" type="button" disabled>話者一覧を再取得</button>
           <p id="cloudVoicevoxStatus" class="speech-status" role="status" aria-live="polite">未許可・未接続</p>
           <p><a href="https://voicevox.su-shiki.com/su-shikiapis/ttsquest/" target="_blank" rel="noopener noreferrer">サービスの説明</a> · <a href="https://voicevox.hiroshiba.jp/" target="_blank" rel="noopener noreferrer">VOICEVOX・話者の利用条件</a></p>
+        </details>
+        <details class="local-voicevox">
+          <summary>このPCのVOICEVOX（任意）</summary>
+          <div class="voicevox-control">
+            <label class="alarm-toggle" title="このPCで起動中のVOICEVOXを使う場合のみON"><input id="voicevoxPrefer" type="checkbox" aria-describedby="voicevoxCompatibility">このPCのVOICEVOXを優先</label>
+            <button id="voicevoxConnect" type="button" aria-describedby="voicevoxCompatibility">このPCへ接続</button>
+            <span id="voicevoxStatus" role="status" aria-live="polite">VOICEVOX未接続（この端末）</span>
+          </div>
+          <p id="voicevoxCompatibility" class="speech-status">端末内連携はPC限定・アプリ起動が必要です。クラウドではVOICEVOXアプリ不要です。</p>
         </details>
         <p id="speechStatus" class="speech-status" role="status" aria-live="polite">停止中</p>
       </div>
       <button id="reconnect" type="button">再接続</button>
-    </div>
+    </section>
   </header>
 
   <main class="layout">
@@ -84,7 +97,9 @@
         <a href="http://www.kmoni.bosai.go.jp/" target="_blank" rel="noopener noreferrer">防災科研 強震モニタ</a>
         <a href="https://www.kyoshin.bosai.go.jp/ja/about_kmoni/" target="_blank" rel="noopener noreferrer">利用条件</a>
       </div>
-      <div class="legend">
+      <details class="map-legend">
+        <summary>凡例</summary>
+        <div class="legend">
         <span><i class="dot land-station"></i>未受信</span>
         <span><i class="dot sea-station"></i>海底観測点（未受信）</span>
         <span>発表震度：</span>
@@ -103,7 +118,8 @@
         <span><i class="dot eew"></i>緊急地震速報</span>
         <span><i class="dot sensing"></i>全国感知ネット</span>
         <span><i class="dot current-location-dot"></i>現在地</span>
-      </div>
+        </div>
+      </details>
     </section>
 
     <aside class="side-panel">
@@ -120,6 +136,8 @@
         <p id="eewWaveStatus" class="muted">P/S表示：震源情報待機中</p>
       </section>
 
+      <details class="feed-settings">
+        <summary>受信状況・台湾情報</summary>
       <section class="card">
         <h2>DMDATA 共有受信</h2>
         <p id="dmdataSharedStatus" class="muted" role="status" aria-live="polite">共有DMDATA / 配信サーバー準備中</p>
@@ -141,12 +159,13 @@
         <p id="wolfxFeedStatus" class="muted" role="status">Wolfx / 待機（YDITS優先・障害時のみ代替）</p>
         <p class="muted"><a href="https://wolfx.jp/docs/open-api/" target="_blank" rel="noopener noreferrer">Wolfx</a>：非公式の参考情報・YDITS障害時の代替</p>
       </section>
+      </details>
 
-      <section class="card">
-        <h2>強震モニタの変化</h2>
+      <details class="card monitor-change-panel">
+        <summary>画像色の変化（地震未確定）</summary>
         <p id="monitorChangeStatus" class="muted">画像色の変化：比較待機 / 地震・震源未確定</p>
         <div id="monitorChangedStations" class="region-list"></div>
-      </section>
+      </details>
 
       <section class="card">
         <h2>揺れを観測した地域</h2>

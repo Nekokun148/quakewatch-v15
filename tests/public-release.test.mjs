@@ -27,7 +27,7 @@ test('public release excludes private saved credentials and audio while shipping
   assert.doesNotMatch(receiver + ui, /localStorage|sessionStorage|indexedDB|qwDmdataKey|console\./);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v42-public/);
+  assert.match(sw, /unified-map-v44-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);
@@ -35,8 +35,10 @@ test('public release excludes private saved credentials and audio while shipping
 
 test('public VOICEVOX controls retain a visible and accessible PC-only compatibility notice', async () => {
   const html = await readFile(new URL('index.html', root), 'utf8');
-  assert.match(html, /<p id="voicevoxCompatibility" class="speech-status">この端末のVOICEVOX連携はPC限定です。クラウド音声は別途同意が必要です。<\/p>/);
-  assert.match(html, /<input id="voicevoxPrefer"[^>]*aria-describedby="voicevoxCompatibility"[^>]*checked>/);
+  assert.match(html, /<p id="voicevoxCompatibility" class="speech-status">端末内連携はPC限定・アプリ起動が必要です。クラウドではVOICEVOXアプリ不要です。<\/p>/);
+  assert.match(html, /<input id="voicevoxPrefer"[^>]*aria-describedby="voicevoxCompatibility"/);
+  assert.doesNotMatch(html.match(/<input id="voicevoxPrefer"[^>]*>/)[0], /checked/);
+  assert.match(html, /クラウドVOICEVOX（アプリ不要）/);
   assert.match(html, /<button id="voicevoxConnect"[^>]*aria-describedby="voicevoxCompatibility"/);
   assert.ok(html.indexOf('id="voicevoxCompatibility"') > html.indexOf('id="voicevoxStatus"'));
   assert.ok(html.indexOf('id="voicevoxCompatibility"') < html.indexOf('id="speechStatus"'));

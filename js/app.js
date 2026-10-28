@@ -63,12 +63,26 @@ function updateTopbarHeight() {
 }
 updateTopbarHeight();
 if ('ResizeObserver' in window) new ResizeObserver(updateTopbarHeight).observe(topbar);
+function setSettingsOpen(open) {
+  $('settingsPanel').hidden = !open;
+  $('settingsToggle').setAttribute('aria-expanded', String(open));
+  updateTopbarHeight();
+}
+$('settingsToggle').addEventListener('click', () => setSettingsOpen($('settingsPanel').hidden));
+topbar.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || $('settingsPanel').hidden) return;
+  event.preventDefault();
+  setSettingsOpen(false);
+  $('settingsToggle').focus();
+});
 const scaleText = s => ({ 10:'1', 20:'2', 30:'3', 40:'4', 45:'5弱', 50:'5強', 55:'6弱', 60:'6強', 70:'7' })[Number(s)] ?? '不明';
 const receiveEEW = createEEWTracker();
 const alarm = createAlarmController({ soundUrl: null, onStatus(info) {
   $('alarmToggle').checked = info.enabled;
   $('alarmToggle').disabled = !info.supported;
   $('alarmTest').disabled = !info.supported;
+  $('alarmSummary').textContent = info.supported ? `警報音 ${info.enabled ? 'ON' : 'OFF'}` : '警報音 未対応';
+  $('alarmSummary').dataset.enabled = String(info.enabled);
   $('alarmStatus').textContent = info.error || ({ off: '警報音 OFF', armed: '警報音 ON', playing: '警報音を再生中', unsupported: '警報音 未対応' })[info.phase];
   if (!info.error && info.supported) {
     $('alarmStatus').textContent += ' / 自動警報は震度5弱以上';
@@ -145,6 +159,8 @@ function updateSpeechUi(info) {
     unsupported: 'このブラウザは音声を利用できません'
   })[info.phase] + (info.voice ? ` / ${info.voice}` : '');
   $('speechStatus').dataset.phase = info.phase;
+  $('speechSummary').textContent = info.error ? '読み上げ エラー' : !info.supported ? '読み上げ 未対応' : `読み上げ ${info.enabled ? 'ON' : 'OFF'}`;
+  $('speechSummary').dataset.enabled = String(info.enabled);
   document.body.dataset.qwSpeech = info.phase;
   document.body.dataset.qwSpeechVoice = info.voice;
   document.body.dataset.qwSpeechError = info.error;
