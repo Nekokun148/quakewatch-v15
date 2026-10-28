@@ -120,7 +120,7 @@ test('speech voice menu is labelled and connected without starting playback on s
 });
 
 function workerHarness({ offline = false } = {}) {
-  const handlers = {}, deleted = [], stored = [], added = [];
+  const handlers = {}, deleted = [], stored = [], added = [], network = [];
   const prefix = 'quake-v15-%2Fquakewatch-v15%2F-';
   const cached = new Response('cached page');
   const cache = {
@@ -129,7 +129,7 @@ function workerHarness({ offline = false } = {}) {
     match: async request => request.url.endsWith('missing.js') ? undefined : cached.clone()
   };
   vm.runInNewContext(swSource, {
-    URL, Response,
+    URL, Request, Response,
     self: {
       registration: { scope: 'https://example.github.io/quakewatch-v15/' },
       addEventListener: (name, fn) => { handlers[name] = fn; },
@@ -141,6 +141,7 @@ function workerHarness({ offline = false } = {}) {
       delete: async key => { deleted.push(key); }
     },
     fetch: async request => {
+      network.push(request);
       if (offline) throw new Error('offline');
       return new Response('live page', { status: request.url.endsWith('missing.js') ? 404 : 200 });
     }
@@ -150,7 +151,7 @@ function workerHarness({ offline = false } = {}) {
     handlers.fetch({ request: new Request(url, { method }), respondWith: result => { promise = result; } });
     return promise ? await promise : null;
   };
-  return { handlers, fetchEvent, deleted, stored, added, prefix };
+  return { handlers, fetchEvent, deleted, stored, added, prefix, network };
 }
 
 test('Service Worker precaches assets and deletes only its own previous project cache', async () => {
@@ -158,14 +159,16 @@ test('Service Worker precaches assets and deletes only its own previous project 
   let promise;
   h.handlers.install({ waitUntil: value => { promise = value; } });
   await promise;
-  assert.ok(h.added.includes('./js/observations.js'));
-  assert.ok(h.added.includes('./js/observation-ui.js'));
-  assert.ok(h.added.includes('./js/voicevox.js'));
-  assert.ok(!h.added.includes('./audio/eew-alarm.mp3'));
-  assert.ok(h.added.includes('./js/ydits.js'));
-  assert.ok(h.added.includes('./js/wolfx.js'));
-  assert.ok(h.added.includes('./js/monitor-changes.js'));
-  assert.ok(h.added.every(path => !path.includes('/local/')));
+  const assets = h.added.map(request => './' + new URL(request.url).pathname.slice('/quakewatch-v15/'.length));
+  assert.ok(assets.includes('./js/observations.js'));
+  assert.ok(assets.includes('./js/observation-ui.js'));
+  assert.ok(assets.includes('./js/voicevox.js'));
+  assert.ok(!assets.includes('./audio/eew-alarm.mp3'));
+  assert.ok(assets.includes('./js/ydits.js'));
+  assert.ok(assets.includes('./js/wolfx.js'));
+  assert.ok(assets.includes('./js/monitor-changes.js'));
+  assert.ok(assets.every(path => !path.includes('/local/')));
+  assert.ok(h.added.every(request => request.cache === 'reload'));
   h.handlers.activate({ waitUntil: value => { promise = value; } });
   await promise;
   assert.ok(h.deleted.includes(h.prefix + 'unified-map-v24'));
@@ -193,4 +196,14 @@ test('offline fallback is confined to that project and uncached files fail expli
   const h = workerHarness({ offline: true });
   assert.equal(await (await h.fetchEvent('https://example.github.io/quakewatch-v15/index.html')).text(), 'cached page');
   assert.equal((await h.fetchEvent('https://example.github.io/quakewatch-v15/missing.js')).status, 503);
+});
+
+test('static asset updates bypass stale HTTP cache but still retain the project offline cache', async () => {
+  const h = workerHarness();
+  await h.fetchEvent('https://example.github.io/quakewatch-v15/js/strong-motion.js');
+  assert.equal(h.network[0].cache, 'no-store');
+  assert.deepEqual(h.stored, ['https://example.github.io/quakewatch-v15/js/strong-motion.js']);
+  const app = await readFile(new URL('js/app.js', root), 'utf8');
+  assert.match(app, /serviceWorker\.register\('sw\.js', \{ updateViaCache: 'none' \}\)/);
+  assert.doesNotMatch(swSource, /localStorage|sessionStorage|indexedDB/);
 });

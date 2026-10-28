@@ -1146,7 +1146,7 @@ window.addEventListener('pagehide', () => sharedFeed.stop());
 window.addEventListener('pageshow', event => { if (event.persisted) sharedFeed.start(); });
 if (new URLSearchParams(location.search).has('demo')) setTimeout(runDemoEvent, 1000);
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js')
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
     .then(registration => {
       document.body.dataset.qwServiceWorker = 'registered';
       document.body.dataset.qwServiceWorkerScope = registration.scope;
