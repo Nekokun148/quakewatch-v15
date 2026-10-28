@@ -44,6 +44,7 @@ export function createStrongMotionController({
     const episode = generation;
     request = new AbortController();
     const currentRequest = request;
+    let stage = 'metadata', httpStatus = 0;
     const deadline = environment.setTimeout(() => currentRequest.abort(), 5000);
     try {
       const url = new URL('latest', base);
@@ -61,7 +62,9 @@ export function createStrongMotionController({
         onStatus('error', '強震モニタ中継の回数制限・自動再接続待ち');
         return;
       }
+      httpStatus = response.status;
       if (!response.ok) throw new Error('Source unavailable');
+      stage = 'format';
       const data = await response.json();
       if (episode !== generation || currentRequest.signal.aborted) return;
       const observed = Date.parse(data.observedAt);
@@ -70,8 +73,10 @@ export function createStrongMotionController({
       if (image.origin !== base.origin || !image.pathname.startsWith(base.pathname)) throw new Error('Invalid frame origin');
       const stamp = metric + '/' + data.timestamp;
       if (stamp !== lastStamp) {
+        stage = 'image';
         const decodedImage = await loadImage(image.href, currentRequest.signal);
         if (episode !== generation || currentRequest.signal.aborted) return;
+        stage = 'render';
         await onFrame({ metric, url: image.href, image: decodedImage, timestamp: data.timestamp, observedAt: data.observedAt });
         if (episode !== generation) return;
         lastStamp = stamp;
@@ -81,7 +86,16 @@ export function createStrongMotionController({
         onStatus(age > 5000 ? 'delayed' : 'live', age > 5000 ? '画像の配信が遅れています' : '1秒間隔で更新中');
       }
     } catch {
-      if (episode === generation) onStatus('error', '画像を取得できません・再試行待ち');
+      if (episode === generation) {
+        const reason = currentRequest.signal.aborted ? '強震モニタの受信が5秒以内に完了しませんでした'
+          : stage === 'metadata' ? '強震モニタ中継の時刻情報を取得できません'
+          : stage === 'format' ? '強震モニタ中継の応答形式を確認できません'
+          : stage === 'image' ? '観測画像を読み込めません（配信元・通信・接続許可等は未特定）'
+          : '観測点を描画できません（地図・地点対応表等を確認）';
+        const status = stage === 'metadata' && Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599
+          ? `（HTTP ${httpStatus}）` : '';
+        onStatus('error', reason + status + '・自動再試行待ち');
+      }
     } finally {
       environment.clearTimeout(deadline);
       if (episode === generation) { busy = false; request = null; }

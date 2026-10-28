@@ -19,7 +19,7 @@ function harness(fetcher) {
     fetcher: async (...args) => { calls.push(args); return fetcher ? fetcher(...args) : { ok: true, json: async () => snapshot }; },
     onFrame: data => frames.push(data), onStatus: (phase, text) => states.push({ phase, text })
   });
-  return { controller, intervals, frames, states, calls, environment };
+  return { controller, intervals, frames, states, calls, environment, timers };
 }
 
 test('decoded image reaches the map callback and failed rendering retries the same timestamp', async () => {
@@ -169,6 +169,36 @@ test('invalid image origin is rejected and fetch failures never publish a new fr
   const h = harness(async () => ({ ok: true, json: async () => ({ ...snapshot, image: 'https://invalid.example/frame' }) }));
   h.controller.start('intensity'); await flush();
   assert.equal(h.frames.length, 0); assert.equal(h.states.at(-1).phase, 'error');
+  assert.match(h.states.at(-1).text, /応答形式/);
+});
+
+test('monitor failures distinguish metadata HTTP, image loading and rendering without raw errors', async () => {
+  const http = harness(async () => ({ ok: false, status: 502 }));
+  http.controller.start('intensity'); await flush();
+  assert.match(http.states.at(-1).text, /時刻情報.*HTTP 502/);
+  const image = harness();
+  image.environment.Image = class { set src(value) { if (value) queueMicrotask(() => this.onerror?.()); } };
+  image.controller.start('intensity'); await flush();
+  assert.match(image.states.at(-1).text, /観測画像を読み込めません/);
+  const states = [];
+  const rendering = createStrongMotionController({ apiBase: 'api/strong-motion/', environment: harness().environment,
+    fetcher: async () => ({ ok: true, json: async () => snapshot }),
+    onFrame() { throw new Error('private rendering details'); }, onStatus: (phase, text) => states.push({ phase, text }) });
+  rendering.start('intensity'); await flush();
+  assert.match(states.at(-1).text, /観測点を描画できません/);
+  assert.doesNotMatch(states.at(-1).text, /private rendering/);
+  http.controller.stop(); image.controller.stop(); rendering.stop();
+});
+
+test('monitor metadata timeout is visible rather than a generic image failure', async () => {
+  const h = harness((_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+  }));
+  h.controller.start('intensity');
+  [...h.timers.values()][0](); await flush();
+  assert.match(h.states.at(-1).text, /5秒以内/);
+  assert.equal(h.frames.length, 0);
+  h.controller.stop();
 });
 
 test('stopping ignores a late image or HTTP response', async () => {
