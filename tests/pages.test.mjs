@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import vm from 'node:vm';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { build, PUBLIC_FILES } from '../scripts/build.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -28,6 +30,15 @@ test('Pages build publishes only allowlisted files and removes stale artifacts',
   const html = await readFile(new URL('dist/index.html', root), 'utf8');
   assert.ok(!/href="\/(?!\/)|src="\/(?!\/)/.test(html));
   for (const file of PUBLIC_FILES) assert.deepEqual(await readFile(new URL('dist/' + file, root)), await readFile(new URL(file, root)));
+});
+
+test('production CLI explicitly disables a draft shared URL even when it exists in the runner environment', async () => {
+  await promisify(execFile)(process.execPath, ['scripts/build.mjs', '--no-shared-dmdata'], {
+    cwd: root, env: { ...process.env, DMDATA_SHARED_URL: 'https://draft.example/api/dmdata/stream', KMONI_API_BASE: '' }
+  });
+  const html = await readFile(new URL('dist/index.html', root), 'utf8');
+  assert.doesNotMatch(html, /data-dmdata-shared-url|draft\.example/);
+  assert.deepEqual(await filesAt(new URL('dist/', root)), [...PUBLIC_FILES, '.nojekyll'].sort());
 });
 
 test('GitHub workflow tests and uploads the generated static directory', async () => {

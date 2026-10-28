@@ -305,6 +305,7 @@ test('deployment defaults are disabled, contain no secrets, and isolate the exis
   assert.deepEqual(config.migrations[0].new_sqlite_classes, ['DmdataSharedHub']);
   const workflow = await readFile(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
   assert.match(workflow, /DMDATA_SHARED_URL: \$\{\{ vars.DMDATA_SHARED_URL \}\}/);
+  assert.match(workflow, /node scripts\/build\.mjs --no-shared-dmdata/);
   assert.doesNotMatch(workflow, /DMDATA_API_KEY|wrangler deploy|secrets\./);
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /js\/dmdata-shared.js/); assert.doesNotMatch(sw, /workers\/|DMDATA_API_KEY/);

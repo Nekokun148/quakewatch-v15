@@ -22,9 +22,10 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - run: node --test tests/*.test.mjs
-      - run: node scripts/build.mjs
+      - run: node scripts/build.mjs --no-shared-dmdata
         env:
           KMONI_API_BASE: https://quakewatch-v15-relay.kouryou148.workers.dev/api/strong-motion/
+          DMDATA_SHARED_URL: ${{ vars.DMDATA_SHARED_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

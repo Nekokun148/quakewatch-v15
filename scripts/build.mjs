@@ -62,4 +62,6 @@ export async function build({ monitorApiBase = process.env.KMONI_API_BASE || '',
   console.log(`Pages build: ${PUBLIC_FILES.length + 1} public files`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await build();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  await build(process.argv.includes('--no-shared-dmdata') ? { sharedDmdataUrl: '' } : undefined);
+}
