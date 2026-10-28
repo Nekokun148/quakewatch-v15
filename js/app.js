@@ -1,5 +1,6 @@
 import { createSpeechController, quakeAnnouncement, eewAnnouncement } from './speech.js';
 import { createVoicevoxEnvironment, createVoicevoxPreference } from './voicevox.js';
+import { mountCloudVoicevox } from './cloud-voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
 import { createLocationController } from './location.js';
@@ -156,6 +157,9 @@ const voicevox = createVoicevoxEnvironment({ environment: window, onStatus: info
   $('voicevoxConnect').disabled = info.phase === 'connecting';
   $('voicevoxStatus').textContent = info.message;
   $('voicevoxStatus').dataset.phase = info.phase;
+}, onCloudStatus(info) {
+  $('cloudVoicevoxStatus').textContent = info.message;
+  $('cloudVoicevoxStatus').dataset.phase = info.phase;
 } });
 const speech = createSpeechController({ environment: voicevox.environment, onStatus: updateSpeechUi });
 const voicevoxPreference = createVoicevoxPreference({ voicevox, speech, environment: window,
@@ -166,6 +170,7 @@ const voicevoxPreference = createVoicevoxPreference({ voicevox, speech, environm
   }
 });
 const alarmAnnouncer = createAlarmAnnouncer({ alarm, speech });
+const cloudVoicevox = mountCloudVoicevox({ voicevox, speech, preference: voicevoxPreference });
 
 function rememberAnnouncement(text) {
   state.lastAnnouncement = text;
@@ -872,13 +877,15 @@ $('speechTest').addEventListener('click', () => {
 });
 
 $('speechVoice').addEventListener('change', event => {
-  voicevoxPreference.selectVoice(event.target.value);
+  cloudVoicevox.selectVoice(event.target.value);
 });
 
-$('voicevoxConnect').addEventListener('click', () => { void voicevoxPreference.connect(); });
-$('browserSpeech').addEventListener('click', () => { voicevoxPreference.setPreferred(false); });
+$('voicevoxConnect').addEventListener('click', () => { cloudVoicevox.disable(); void voicevoxPreference.connect(); });
+$('browserSpeech').addEventListener('click', () => { cloudVoicevox.disable(); voicevoxPreference.setPreferred(false); });
 $('voicevoxPrefer').addEventListener('change', event => {
-  voicevoxPreference.setPreferred(event.target.checked);
+  const preferred = event.target.checked;
+  if (preferred) cloudVoicevox.disable();
+  voicevoxPreference.setPreferred(preferred);
   if (state.speech) void voicevoxPreference.prepare();
 });
 

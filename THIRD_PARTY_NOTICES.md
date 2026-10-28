@@ -1,5 +1,15 @@
 # Map Data
 
+## Optional Cloud Speech: tts.quest / VOICEVOX
+
+The opt-in cloud voice adapter uses the unofficial tts.quest service, not an
+official VOICEVOX-hosted API. Text and speaker ID are sent only after consent.
+The app displays the returned VOICEVOX speaker credit; generated audio is not
+bundled or cached. Users must follow each voice library's terms.
+Service documentation: https://voicevox.su-shiki.com/su-shikiapis/ttsquest/
+API documentation: https://github.com/ts-klassen/ttsQuestV3Voicevox
+VOICEVOX and voice library terms: https://voicevox.hiroshiba.jp/
+
 ## Central Weather Administration (Taiwan) RSS Headlines
 
 The optional Taiwan panel uses the official CWA warning/advisory RSS:

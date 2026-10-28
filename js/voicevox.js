@@ -1,3 +1,5 @@
+import { createCloudVoicevox, CLOUD_VOICE_PREFIX } from './cloud-voicevox.js';
+
 export const VOICEVOX_BASE = 'http://127.0.0.1:50021';
 
 export function voicevoxVoices(speakers) {
@@ -11,7 +13,7 @@ export function voicevoxVoices(speakers) {
   });
 }
 
-export function createVoicevoxEnvironment({ environment = window, onStatus = () => {} } = {}) {
+export function createVoicevoxEnvironment({ environment = window, onStatus = () => {}, onCloudStatus = () => {} } = {}) {
   const native = environment.speechSynthesis;
   const browserSupported = Boolean(native && environment.SpeechSynthesisUtterance);
   const localSupported = Boolean(environment.fetch && environment.Audio && environment.URL?.createObjectURL);
@@ -23,6 +25,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
   let browserFallback = false;
   const notify = () => listeners.forEach(listener => listener());
   const fetcher = environment.fetch?.bind(environment);
+  const cloud = createCloudVoicevox({ environment, onStatus(info) { notify(); onCloudStatus(info); } });
 
   async function connect() {
     if (connecting) return connecting;
@@ -100,7 +103,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     const utterance = record.utterance;
     const nativeUtterance = new environment.SpeechSynthesisUtterance(utterance.text);
     for (const key of ['lang', 'rate', 'pitch', 'volume']) nativeUtterance[key] = utterance[key];
-    if (utterance.voice?.voiceURI?.startsWith('voicevox:')) {
+    if (utterance.voice?.voiceURI?.startsWith('voicevox:') || utterance.voice?.voiceURI?.startsWith(CLOUD_VOICE_PREFIX)) {
       const japanese = native.getVoices().filter(voice => /^ja(?:[-_]|$)/i.test(voice.lang));
       nativeUtterance.voice = japanese.find(voice => voice.localService && voice.default)
         || japanese.find(voice => voice.localService) || japanese.find(voice => voice.default) || japanese[0] || null;
@@ -155,6 +158,36 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     }
   }
 
+  async function speakCloud(record) {
+    const controller = new AbortController();
+    record.controller = controller;
+    function failed(error) {
+      if (active !== record || record.fallback) return;
+      record.fallback = true;
+      dispose(record);
+      if (error.name === 'NotAllowedError') { settle(record, 'not-allowed'); return; }
+      onCloudStatus({ phase: 'fallback', message: 'クラウド音声を利用できません・ブラウザ標準で継続', enabled: cloud.enabled });
+      speakBrowser(record);
+    }
+    try {
+      const blob = await cloud.synthesize(record.utterance, controller.signal);
+      if (active !== record) return;
+      record.url = environment.URL.createObjectURL(blob);
+      const audio = new environment.Audio(record.url);
+      record.audio = audio;
+      audio.onended = () => settle(record);
+      audio.onerror = () => {
+        if (record.started) settle(record, 'audio-hardware');
+        else failed(new Error('Cloud audio unavailable'));
+      };
+      await audio.play();
+      if (active === record && record.audio === audio) {
+        record.started = true;
+        record.utterance.onstart?.();
+      }
+    } catch (error) { failed(error); }
+  }
+
   class Utterance {
     constructor(text) {
       this.text = String(text);
@@ -168,7 +201,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
 
   const synth = {
     get paused() { return native?.paused || false; },
-    getVoices: () => [...(native?.getVoices() || []), ...voices],
+    getVoices: () => [...(native?.getVoices() || []), ...voices, ...cloud.getVoices()],
     addEventListener(type, listener) { if (type === 'voiceschanged') listeners.add(listener); },
     resume() { native?.resume(); },
     cancel,
@@ -176,6 +209,10 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       cancel();
       const record = { utterance, serial };
       active = record;
+      if (utterance.voice?.voiceURI?.startsWith(CLOUD_VOICE_PREFIX)) {
+        void speakCloud(record);
+        return;
+      }
       if (utterance.voice?.voiceURI?.startsWith('voicevox:')) {
         void speakLocal(record);
         return;
@@ -194,7 +231,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     clearTimeout: environment.clearTimeout.bind(environment)
   };
   onStatus({ phase: 'off', message: 'VOICEVOX未接続（この端末）' });
-  return { environment: adapted, connect, setBrowserFallback(value) { browserFallback = Boolean(value); } };
+  return { environment: adapted, connect, cloud, setBrowserFallback(value) { browserFallback = Boolean(value); } };
 }
 
 export function createVoicevoxPreference({ voicevox, speech, environment = window,

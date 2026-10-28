@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PUBLIC_FILES = [
+  'js/cloud-voicevox.js',
   'js/quake-highlight.js',
   'js/monitor-highlights.js',
   'js/taiwan-feed.js', 'js/taiwan-ui.js',

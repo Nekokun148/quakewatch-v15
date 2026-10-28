@@ -123,6 +123,13 @@ button:disabled {
 .voicevox-control button { flex: none; padding: 5px 6px; font-size: 11px; }
 .voicevox-control span { min-width: 0; overflow-wrap: anywhere; }
 .voicevox-control [data-phase="error"] { color: #ffb8a9; }
+.cloud-voicevox { margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.cloud-voicevox summary { cursor: pointer; min-height: 32px; display: list-item; }
+.cloud-voicevox .alarm-toggle { white-space: normal; margin: 6px 0; }
+.cloud-voicevox input { flex: none; }
+.cloud-voicevox button { padding: 6px 8px; font-size: 12px; }
+.cloud-voicevox a { color: #9fd9ef; }
+.cloud-voicevox [data-phase="fallback"] { color: #ffce9c; }
 
 .location-control { min-width: 0; max-width: 180px; }
 .location-status { overflow-wrap: anywhere; }

@@ -43,7 +43,7 @@ export function createSpeechController({ environment = window, onStatus = () => 
   function refreshVoice() {
     const voices = supported ? synth.getVoices() : [];
     japanese = voices.filter(v => /^ja(?:[-_]|$)/i.test(v.lang));
-    const browserVoices = japanese.filter(v => !voiceId(v).startsWith('voicevox:'));
+    const browserVoices = japanese.filter(v => !/^voicevox(?:-cloud)?:/.test(voiceId(v)));
     voice = japanese.find(v => voiceId(v) === preferredVoice)
       || browserVoices.find(v => v.localService && v.default)
       || browserVoices.find(v => v.localService)
