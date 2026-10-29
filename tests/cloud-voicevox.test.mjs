@@ -276,6 +276,58 @@ test('rate limit reason and remaining wait survive reconnect and browser fallbac
   assert.equal(h.requests.length, 2);
 });
 
+test('an explicit manual cloud preview can finish after four and eight seconds without disabling speech', async () => {
+  let polls = 0;
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names) : url === CLOUD_SYNTHESIS_URL ? json(ticket)
+    : url.endsWith('status.json') ? json({ success: true, isAudioReady: ++polls === 6, isAudioError: false })
+      : new Response('mock mp3', { headers: { 'Content-Type': 'audio/mpeg' } }));
+  await h.enableCloud(); h.speech.say('遅い手動確認の模擬文。', { waitForCloud: true }); await flush();
+  for (let second = 0; second < 4; second++) await h.advance(2000);
+  assert.equal(polls, 5);
+  assert.equal(h.audio.length + h.spoken.length, 0);
+  assert.equal(h.statuses.at(-1).enabled, true);
+  assert.equal(h.statuses.at(-1).phase, 'starting');
+  await h.advance(2000);
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.spoken.length, 0);
+  assert.equal(h.requests.filter(r => r.url === CLOUD_SYNTHESIS_URL).length, 1);
+  assert.equal(h.statuses.at(-1).phase, 'speaking');
+  h.audio[0].onended();
+});
+
+test('manual preview still stops at fifteen seconds with one browser fallback and bounded polling', async () => {
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names) : url === CLOUD_SYNTHESIS_URL ? json(ticket)
+    : json({ success: true, isAudioReady: false, isAudioError: false }));
+  await h.enableCloud(); h.speech.say('未完成の手動確認。', { waitForCloud: true }); await flush();
+  for (let second = 0; second < 7; second++) await h.advance(2000);
+  assert.equal(h.spoken.length, 0);
+  assert.equal(h.statuses.at(-1).enabled, true);
+  await h.advance(1000);
+  assert.equal(h.spoken.length, 1);
+  assert.equal(h.audio.length, 0);
+  assert.match(h.fallbacks.at(-1).message, /15秒以内/);
+  assert.equal(h.cloudStatuses.at(-1).reason, 'pending');
+  assert.equal(h.requests.filter(r => r.url.endsWith('status.json')).length, 8);
+  await h.advance(10000);
+  assert.equal(h.spoken.length, 1);
+  h.spoken[0].onstart(); h.spoken[0].onend();
+});
+
+test('a new alarm aborts a long manual preview before playing and ignores its late synthesis reply', async () => {
+  let resolve;
+  const h = adapterHarness(url => url === CLOUD_VOICES_URL ? json(names) : new Promise(done => { resolve = done; }));
+  await h.enableCloud(); h.speech.say('中断される手動確認。', { waitForCloud: true }); await flush();
+  let sounds = 0;
+  const announcer = createAlarmAnnouncer({ speech: h.speech, alarm: {
+    play() { sounds++; return true; }, stop() {}
+  } });
+  announcer.announce('速報の模擬文。', { sound: true });
+  assert.equal(sounds, 1);
+  assert.equal(h.requests[1].options.signal.aborted, true);
+  resolve(json(ticket)); await flush();
+  assert.equal(h.audio.length + h.spoken.length, 0);
+});
+
 test('metadata discovery does not claim successful speech and network failures remain distinguishable', async () => {
   const h = harness(); await ready(h);
   assert.match(h.statuses.at(-1).message, /音声合成は未確認/);
@@ -438,4 +490,15 @@ test('public app ships consent UI and module while keeping cloud responses outsi
   assert.match(sw, /url.origin !== SCOPE.origin/);
   assert.match(sw, /\.\/js\/cloud-voicevox.js/);
   assert.ok(PUBLIC_FILES.includes('js/cloud-voicevox.js'));
+});
+
+test('only explicit manual reading actions opt into longer cloud waits, not automatic earthquake handlers', async () => {
+  const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const manualCalls = [...app.matchAll(/speech\.say\(([^\n]+)waitForCloud: true/g)].map(match => match[1]);
+  assert.equal(manualCalls.length, 3);
+  assert.match(manualCalls[0], /地震情報の読み上げを開始します/);
+  assert.match(manualCalls[1], /読み上げのテストです/);
+  assert.match(manualCalls[2], /state\.lastAnnouncement/);
+  const alarm = await readFile(new URL('../js/alarm.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(alarm, /waitForCloud/);
 });

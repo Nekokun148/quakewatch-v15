@@ -44,6 +44,38 @@ test('only returned talk styles are exposed and malformed styles are rejected', 
   assert.throws(() => voicevoxVoices(null));
 });
 
+test('streaming talk styles remain valid for ordinary query and synthesis, unlike song or unknown styles', async () => {
+  const current = [{ name: 'Current engine', styles: [
+    { id: 2, name: 'Normal', type: 'streaming_talk' }, { id: 5, name: 'Legacy' },
+    { id: 7, name: 'Song', type: 'sing' }, { id: 8, name: 'Teacher', type: 'singing_teacher' },
+    { id: 9, name: 'Decoder', type: 'frame_decode' }, { id: 10, name: 'Unknown', type: 'other' }
+  ] }];
+  assert.deepEqual(voicevoxVoices(current).map(voice => voice.voiceURI), ['voicevox:2', 'voicevox:5']);
+  const h = harness((url) => url.endsWith('/speakers') ? { ok: true, json: async () => current }
+    : url.includes('/audio_query') ? { ok: true, json: async () => ({ accent_phrases: [] }) }
+      : { ok: true, blob: async () => new Blob(['mock wav'], { type: 'audio/wav' }) });
+  assert.equal(await h.adapter.connect(), true);
+  assert.equal(h.controller.setVoice('voicevox:2'), true);
+  assert.equal(h.audio.length + h.nativePlayed.length, 0);
+  h.controller.enable(); h.controller.say('Mock streaming talk compatibility.');
+  await flush();
+  assert.match(h.requests[1].url, /\/audio_query\?/);
+  assert.equal(h.requests[2].url, VOICEVOX_BASE + '/synthesis?speaker=2');
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.nativePlayed.length, 0);
+  h.audio[0].onended();
+});
+
+test('an engine response with no supported voices is not reported as a startup or permission failure', async () => {
+  const h = harness(() => ({ ok: true, json: async () => [
+    { name: 'Song only', styles: [{ id: 3, name: 'Song', type: 'sing' }] }
+  ] }));
+  assert.equal(await h.adapter.connect(), false);
+  assert.match(h.connections.at(-1).message, /応答.*読み上げ.*話者/);
+  assert.doesNotMatch(h.connections.at(-1).message, /未起動|接続許可/);
+  assert.equal(h.audio.length + h.nativePlayed.length, 0);
+});
+
 test('connecting and selecting a local voice cannot enable or play speech', async () => {
   const h = harness();
   const first = h.adapter.connect();

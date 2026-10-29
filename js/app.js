@@ -889,14 +889,14 @@ $('speechToggle').addEventListener('click', () => {
   if (state.speech) { voicevoxPreference.cancelPending(); speech.disable(); }
   else if (speech.enable()) {
     void voicevoxPreference.prepare();
-    speech.say('地震情報の読み上げを開始します。', { interrupt: true });
+    speech.say('地震情報の読み上げを開始します。', { interrupt: true, waitForCloud: true });
   }
 });
 
 $('speechTest').addEventListener('click', () => {
   if (speech.enable()) {
     void voicevoxPreference.prepare();
-    speech.say('読み上げのテストです。日本語の音声を確認しています。', { interrupt: true });
+    speech.say('読み上げのテストです。日本語の音声を確認しています。', { interrupt: true, waitForCloud: true });
   }
 });
 
@@ -918,7 +918,7 @@ $('voicevoxPrefer').addEventListener('change', event => {
 $('readLatest').addEventListener('click', () => {
   if (state.lastAnnouncement && speech.enable()) {
     void voicevoxPreference.prepare();
-    speech.say(state.lastAnnouncement, { interrupt: true });
+    speech.say(state.lastAnnouncement, { interrupt: true, waitForCloud: true });
   }
 });
 

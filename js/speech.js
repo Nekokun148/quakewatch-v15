@@ -1,4 +1,5 @@
 import { eewInfo } from './eew.js';
+import { CLOUD_VOICE_PREFIX, CLOUD_PREVIEW_DEADLINE } from './cloud-voicevox.js';
 
 const VOICE_STORAGE_KEY = 'qwSpeechVoice';
 const voiceId = voice => voice.voiceURI || JSON.stringify([voice.name, voice.lang, Boolean(voice.localService)]);
@@ -92,12 +93,14 @@ export function createSpeechController({ environment = window, onStatus = () => 
           : local ? '選択したPC内話者が未取得です。VOICEVOXの起動と接続を確認してください。'
           : '選択した音声が現在の音声一覧にないため、利用可能なブラウザ音声を選びました。' });
     }
-    const utterance = new environment.SpeechSynthesisUtterance(queue.shift());
+    const next = queue.shift();
+    const utterance = new environment.SpeechSynthesisUtterance(next.text);
     utterance.lang = 'ja-JP';
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
+    utterance.waitForCloud = next.waitForCloud && voiceId(voice || {}).startsWith(CLOUD_VOICE_PREFIX);
     active = utterance;
     phase = 'starting';
     report();
@@ -125,7 +128,7 @@ export function createSpeechController({ environment = window, onStatus = () => 
     };
     startTimer = environment.setTimeout(() => {
       if (active === utterance) fail('timeout');
-    }, 8000);
+    }, utterance.waitForCloud ? CLOUD_PREVIEW_DEADLINE + 4000 : 8000);
     try {
       if (synth.paused) synth.resume();
       synth.speak(utterance);
@@ -167,14 +170,14 @@ export function createSpeechController({ environment = window, onStatus = () => 
     playNext();
   }
 
-  function say(text, { interrupt = false } = {}) {
+  function say(text, { interrupt = false, waitForCloud = false } = {}) {
     if (!enabled || !supported || !text) return false;
     if (interrupt) clearPlayback();
     lastText = String(text);
     const sentences = lastText.match(/[^。！？]+[。！？]?/gu) || [lastText];
     for (const sentence of sentences) {
       const characters = Array.from(sentence);
-      for (let i = 0; i < characters.length; i += 120) queue.push(characters.slice(i, i + 120).join(''));
+      for (let i = 0; i < characters.length; i += 120) queue.push({ text: characters.slice(i, i + 120).join(''), waitForCloud });
     }
     playNext();
     return true;

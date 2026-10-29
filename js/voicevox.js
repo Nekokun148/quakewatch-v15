@@ -7,7 +7,7 @@ export function voicevoxVoices(speakers) {
   return speakers.flatMap(speaker => {
     if (typeof speaker.name !== 'string' || !Array.isArray(speaker.styles)) return [];
     return speaker.styles.filter(style => Number.isInteger(style.id) && style.id >= 0
-      && typeof style.name === 'string' && (!style.type || style.type === 'talk'))
+      && typeof style.name === 'string' && (!style.type || style.type === 'talk' || style.type === 'streaming_talk'))
       .map(style => ({ voiceURI: `voicevox:${style.id}`, name: `VOICEVOX: ${speaker.name}（${style.name}）`,
         lang: 'ja-JP', localService: true, default: false }));
   });
@@ -40,7 +40,7 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
     }
     onStatus({ phase: 'connecting', message: 'VOICEVOXへ接続中（この端末）' });
     const controller = new AbortController();
-    let timer;
+    let timer, stage = 'connection';
     const timeout = new Promise((_, reject) => {
       timer = environment.setTimeout(() => { controller.abort(); reject(new Error('Discovery timeout')); }, 5000);
     });
@@ -51,7 +51,9 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
             signal: controller.signal, cache: 'no-store', redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer'
           });
           if (!response.ok) throw new Error('speakers');
+          stage = 'format';
           const found = voicevoxVoices(await response.json());
+          stage = 'voices';
           if (!found.length) throw new Error('No talk styles');
           return found;
         }), timeout]);
@@ -63,12 +65,13 @@ export function createVoicevoxEnvironment({ environment = window, onStatus = () 
       } catch {
         voices = [];
         notify();
-        onStatus({ phase: 'error', message: browserSupported
-          ? 'VOICEVOX接続不可・ブラウザ標準を使用（エンジン未起動／接続許可など）'
-          : 'VOICEVOX接続不可・ブラウザ標準も未対応' });
-        if (browserSupported && browserFallback) onFallback({ source: 'local', reason: 'discovery',
-          message: controller.signal.aborted ? 'PC内VOICEVOXの接続確認が5秒以内に完了しませんでした。'
-            : 'PC内VOICEVOXの話者を取得できませんでした（未起動・通信・接続許可等は未特定）。' });
+        const message = controller.signal.aborted ? 'PC内VOICEVOXの接続確認が5秒以内に完了しませんでした。'
+          : stage === 'voices' ? 'VOICEVOXは応答しましたが、読み上げ用の話者がありません（対応形式を確認）。'
+          : stage === 'format' ? 'VOICEVOXの話者一覧の形式を確認できませんでした。'
+          : 'PC内VOICEVOXへ接続できませんでした（未起動・通信・接続許可等は未特定）。';
+        onStatus({ phase: 'error', message: message
+          + (browserSupported ? ' ブラウザ標準を使用' : ' ブラウザ標準も未対応') });
+        if (browserSupported && browserFallback) onFallback({ source: 'local', reason: 'discovery', message });
         return false;
       } finally {
         environment.clearTimeout(timer);
