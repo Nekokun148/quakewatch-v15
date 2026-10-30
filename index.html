@@ -60,12 +60,34 @@
         </details>
         <details class="local-voicevox">
           <summary>このPCのVOICEVOX（任意）</summary>
+          <form id="voicevoxSettings" class="voicevox-settings" novalidate>
+            <label for="voicevoxBase">このPCの接続先URL</label>
+            <input id="voicevoxBase" type="url" value="http://127.0.0.1:50021" autocomplete="off" spellcheck="false" aria-describedby="voicevoxBaseHint voicevoxSettingsMessage">
+            <div class="voicevox-settings-actions">
+              <button type="submit">接続先を保存</button>
+              <button id="voicevoxBaseReset" type="button">初期値に戻す</button>
+            </div>
+            <p id="voicevoxBaseHint" class="speech-status">各PCで起動しているVOICEVOXの接続先を指定します。保存だけでは接続・再生しません。接続先を変更すると、再生と待機中の読み上げを停止します。</p>
+            <p id="voicevoxSettingsMessage" class="speech-status" role="status" aria-live="polite"></p>
+          </form>
+          <p class="speech-status">保存済みの接続先：<span id="voicevoxBaseCurrent">http://127.0.0.1:50021</span></p>
           <div class="voicevox-control">
             <label class="alarm-toggle" title="このPCで起動中のVOICEVOXを使う場合のみON"><input id="voicevoxPrefer" type="checkbox" aria-describedby="voicevoxCompatibility">このPCのVOICEVOXを優先</label>
             <button id="voicevoxConnect" type="button" aria-describedby="voicevoxCompatibility">このPCへ接続</button>
             <span id="voicevoxStatus" role="status" aria-live="polite">VOICEVOX未接続（この端末）</span>
           </div>
           <p id="voicevoxCompatibility" class="speech-status">端末内連携はPC限定・アプリ起動が必要です。クラウドではVOICEVOXアプリ不要です。</p>
+          <details id="voicevoxTroubleshooting" class="voicevox-help">
+            <summary>接続できないときの確認手順</summary>
+            <ol>
+              <li>このPCのVOICEVOXアプリで、短い文章を入力して再生できるか確認してください。</li>
+              <li><a id="voicevoxVersion" href="http://127.0.0.1:50021/version" target="_blank" rel="noopener noreferrer">保存済み接続先のバージョンを確認</a>します。開かない場合は、アプリのエンジン起動状態と実際の接続先・ポート番号を確認してください。127.0.0.1で開かない場合は、localhostでも確認できます。変更したURLは保存してから接続してください。</li>
+              <li>バージョンが表示される場合は、<a id="voicevoxEngineSettings" href="http://127.0.0.1:50021/setting" target="_blank" rel="noopener noreferrer">VOICEVOXの設定画面</a>で、許可するオリジンに <code>https://nekokun148.github.io</code> を追加して保存し、VOICEVOXを再起動してください。末尾の /quakewatch-v15/ は含めません。</li>
+              <li>ブラウザやOSからローカルネットワークへの接続許可を求められたら、このサイトを許可してください。以前拒否した場合はサイト設定やOSのプライバシー設定を確認します。設定名や対応状況はブラウザ・OSによって異なります。</li>
+              <li>「このPCへ接続」を押し、接続済みになったら話者を選んで「音声テスト」を押してください。音声の再生許可も必要です。</li>
+            </ol>
+            <p>接続失敗だけでは、接続先の違い・CORS・ブラウザ権限などの原因は特定できません。<a href="https://github.com/VOICEVOX/voicevox_engine#cors-設定" target="_blank" rel="noopener noreferrer">公式のCORS設定手順</a>も参照してください。</p>
+          </details>
         </details>
         <p id="speechStatus" class="speech-status" role="status" aria-live="polite">停止中</p>
       </div>

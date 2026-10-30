@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createVoicevoxEnvironment, createVoicevoxPreference, voicevoxVoices, VOICEVOX_BASE } from '../js/voicevox.js';
+import { createVoicevoxEnvironment, createVoicevoxPreference, voicevoxVoices, VOICEVOX_BASE,
+  normalizeVoicevoxBase, mountLocalVoicevox } from '../js/voicevox.js';
 import { createSpeechController } from '../js/speech.js';
 
 const speakers = [{ name: 'Test speaker', styles: [{ id: 2, name: 'Normal', type: 'talk' }, { id: 3, name: 'Singing', type: 'sing' }] }];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness(fetcher) {
+function harness(fetcher, { storage = new Map(), storageBlocked = false } = {}) {
   const requests = [], audio = [], nativePlayed = [], revoked = [], statuses = [], connections = [], fallbacks = [];
   const timers = new Map();
-  const storage = new Map();
   let id = 0;
   const browserVoice = { voiceURI: 'browser-ja', name: 'Browser Japanese', lang: 'ja-JP', localService: true };
   const native = { getVoices: () => [browserVoice], addEventListener() {}, cancel() {}, resume() {}, speak: value => nativePlayed.push(value) };
@@ -22,7 +22,10 @@ function harness(fetcher) {
   const environment = {
     Audio, URL: { createObjectURL: () => 'blob:test', revokeObjectURL: url => revoked.push(url) },
     speechSynthesis: native, SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
-    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    localStorage: {
+      getItem: key => { if (storageBlocked) throw new Error('Denied'); return storage.get(key); },
+      setItem: (key, value) => { if (storageBlocked) throw new Error('Denied'); storage.set(key, value); }
+    },
     setTimeout: callback => { timers.set(++id, callback); return id; }, clearTimeout: id => timers.delete(id),
     fetch: async (url, options) => {
       requests.push({ url, options });
@@ -374,4 +377,211 @@ test('preference still works with blocked storage and voice selection does not e
   assert.equal(h.statuses.at(-1).enabled, false);
   assert.equal(h.nativePlayed.length, 0);
   assert.equal(h.audio.length, 0);
+});
+
+test('local endpoint validation accepts loopback origins and rejects alternate hosts, paths and credentials', () => {
+  for (const [input, expected] of [
+    [' http://LOCALHOST:50022/ ', 'http://localhost:50022'],
+    ['http://127.0.0.1:65535', 'http://127.0.0.1:65535'],
+    ['http://[::1]:50023/', 'http://[::1]:50023'],
+    ['http://localhost:80', 'http://localhost']
+  ]) assert.equal(normalizeVoicevoxBase(input), expected);
+  for (const input of [null, '', 'localhost:50021', 'https://localhost:50021', '//localhost:50021',
+    'http://localhost:0', 'http://localhost:65536', 'http://localhost:50021/setting',
+    'http://localhost:50021/../', 'http://localhost:50021/%2e/', 'http://localhost:50021?x=1',
+    'http://localhost:50021?', 'http://localhost:50021#', 'http://user:pass@localhost:50021',
+    'http://@localhost:50021', 'http://localhost.evil.test:50021', 'http://192.168.1.2:50021',
+    'http://127.1:50021', 'http://0x7f000001:50021', 'http://[::ffff:127.0.0.1]:50021',
+    'http://localhost:50021\\setting']) assert.throws(() => normalizeVoicevoxBase(input), undefined, String(input));
+});
+
+test('custom loopback endpoints are used for discovery, query and synthesis without implicit playback', async () => {
+  for (const base of ['http://localhost:50022', 'http://[::1]:50023', 'http://127.0.0.1:50024']) {
+    const h = harness(), p = preference(h);
+    assert.deepEqual(p.control.setBase(base + '/'), { base, saved: true });
+    assert.equal(h.requests.length + h.audio.length + h.nativePlayed.length, 0);
+    assert.equal(h.statuses.at(-1).enabled, false);
+    assert.equal(await p.control.connect(), true);
+    assert.equal(h.requests[0].url, base + '/speakers');
+    assert.equal(h.statuses.at(-1).enabled, false);
+    h.controller.enable(); h.controller.say('設定した接続先のテスト。'); await flush();
+    assert.deepEqual(h.requests.map(r => new URL(r.url).origin), [base, base, base]);
+    assert.equal(new URL(h.requests[1].url).pathname, '/audio_query');
+    assert.equal(h.requests[2].url, base + '/synthesis?speaker=2');
+    for (const { options } of h.requests) {
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.credentials, 'omit');
+      assert.equal(options.cache, 'no-store');
+    }
+    assert.equal(h.audio.length, 1);
+    h.audio[0].onended();
+  }
+});
+
+test('endpoint and existing voice preference survive reload without automatic discovery or activation', async () => {
+  const storage = new Map([['qwSpeechVoice', 'voicevox:2'], ['qwPreferVoicevox', 'true']]);
+  const h = harness(undefined, { storage }), p = preference(h);
+  p.control.setBase('http://localhost:50022');
+  const reloaded = harness(undefined, { storage }), pref = preference(reloaded);
+  assert.equal(reloaded.adapter.base, 'http://localhost:50022');
+  assert.equal(reloaded.connections.at(-1).base, 'http://localhost:50022');
+  assert.equal(reloaded.statuses.at(-1).preferredVoice, 'voicevox:2');
+  assert.equal(reloaded.statuses.at(-1).enabled, false);
+  assert.equal(await pref.control.prepare(), false);
+  assert.equal(reloaded.requests.length, 0);
+  assert.equal(await pref.control.connect(), true);
+  assert.equal(reloaded.statuses.at(-1).preferredVoice, 'voicevox:2');
+  assert.equal(reloaded.audio.length + reloaded.nativePlayed.length, 0);
+});
+
+test('blocked storage permits custom endpoints for this session and invalid stored URLs fall back visibly', async () => {
+  const h = harness(undefined, { storageBlocked: true }), p = preference(h);
+  assert.deepEqual(p.control.setBase('http://localhost:50022'), { base: 'http://localhost:50022', saved: false });
+  assert.equal(await p.control.connect(), true);
+  assert.equal(h.requests[0].url, 'http://localhost:50022/speakers');
+  for (const value of ['https://evil.test', 'http://localhost:50021/path', '']) {
+    const bad = harness(undefined, { storage: new Map([['qwVoicevoxBase', value]]) });
+    assert.equal(bad.adapter.base, VOICEVOX_BASE);
+    assert.match(bad.connections.at(-1).message, /無効.*初期値/);
+    assert.equal(bad.requests.length, 0);
+    preference(bad).control.setBase(VOICEVOX_BASE);
+    assert.doesNotMatch(bad.connections.at(-1).message, /無効/);
+    assert.equal(bad.storage.get('qwVoicevoxBase'), VOICEVOX_BASE);
+  }
+});
+
+test('changing endpoint cancels discovery promptly and a late old response cannot clear a new discovery', async () => {
+  let releaseOld, releaseNew;
+  const h = harness(url => new Promise(resolve => {
+    if (url.startsWith(VOICEVOX_BASE)) releaseOld = resolve;
+    else releaseNew = resolve;
+  })), p = preference(h);
+  const old = p.control.connect(); await flush();
+  p.control.setBase('http://localhost:50022');
+  assert.equal(h.requests[0].options.signal.aborted, true);
+  assert.equal(await old, false);
+  const next = p.control.connect(); await flush();
+  const statusesBefore = h.connections.length;
+  releaseOld({ ok: true, json: async () => [{ name: 'Old', styles: [{ id: 7, name: 'Old' }] }] });
+  await flush();
+  assert.equal(h.connections.length, statusesBefore);
+  const same = h.adapter.connect(); await flush();
+  assert.equal(h.requests.length, 2);
+  releaseNew({ ok: true, json: async () => speakers });
+  assert.equal(await next, true);
+  assert.equal(await same, true);
+  assert.equal(h.connections.at(-1).base, 'http://localhost:50022');
+  assert.equal(h.statuses.at(-1).preferredVoice, 'voicevox:2');
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.audio.length + h.nativePlayed.length, 0);
+});
+
+test('saving an invalid or unchanged endpoint leaves active playback and queued speech intact', async () => {
+  const h = harness(), p = preference(h);
+  await p.control.connect(); h.controller.enable(); h.controller.say('最初。次。'); await flush();
+  assert.throws(() => p.control.setBase('http://evil.test:50021'));
+  p.control.setBase(VOICEVOX_BASE + '/');
+  assert.equal(h.audio[0].pauses, 0);
+  assert.equal(h.connections.at(-1).phase, 'ready');
+  h.audio[0].onended(); await flush();
+  assert.equal(h.audio.length, 2);
+  h.audio[1].onended();
+});
+
+test('changing endpoint stops each synthesis/playback stage, drops queued text and ignores late results', async () => {
+  for (const stage of ['query', 'synthesis', 'blob', 'playback', 'playing']) {
+    let release;
+    const blob = new Blob(['mock'], { type: 'audio/wav' });
+    const query = { ok: true, json: async () => ({}) };
+    const synthesis = { ok: true, blob: async () => blob };
+    const h = harness(url => {
+      if (url.endsWith('/speakers')) return { ok: true, json: async () => speakers };
+      if (url.includes('/audio_query')) return stage === 'query' ? new Promise(r => { release = () => r(query); }) : query;
+      if (stage === 'synthesis') return new Promise(r => { release = () => r(synthesis); });
+      if (stage === 'blob') return { ok: true, blob: () => new Promise(r => { release = () => r(blob); }) };
+      return synthesis;
+    }), p = preference(h);
+    if (stage === 'playback') h.environment.Audio.prototype.play = () => new Promise(r => { release = r; });
+    await p.control.connect(); h.controller.enable(); h.controller.say('最初。待機中。'); await flush();
+    const oldEnd = h.audio[0]?.onended;
+    const oldSignal = h.requests.at(-1).options.signal;
+    p.control.setBase('http://localhost:50022');
+    const requestsBefore = h.requests.length, audioBefore = h.audio.length;
+    assert.equal(oldSignal.aborted, true, stage);
+    assert.equal(h.statuses.at(-1).enabled, true, stage);
+    assert.equal(h.statuses.at(-1).phase, 'ready', stage);
+    assert.equal(h.storage.get('qwSpeechVoice'), 'voicevox:2');
+    assert.equal(h.storage.get('qwPreferVoicevox'), 'true');
+    assert.equal(h.adapter.environment.speechSynthesis.getVoices().some(v => v.voiceURI.startsWith('voicevox:')), false);
+    release?.(); oldEnd?.(); await flush();
+    assert.equal(h.requests.length, requestsBefore, stage);
+    assert.equal(h.audio.length, audioBefore, stage);
+    assert.equal(h.nativePlayed.length, 0, stage);
+    assert.equal(h.statuses.at(-1).completed, 0, stage);
+    assert.equal(h.connections.at(-1).phase, 'off', stage);
+    if (audioBefore) {
+      assert.equal(h.audio[0].pauses, 1, stage);
+      assert.deepEqual(h.revoked, ['blob:test']);
+    }
+    assert.equal(h.timers.size, 0, stage);
+  }
+});
+
+test('discovery HTTP failures expose the status and configured endpoint without response contents', async () => {
+  const h = harness(() => ({ ok: false, status: 403, text: async () => 'private detail' }));
+  h.adapter.setBase('http://localhost:50022');
+  assert.equal(await h.adapter.connect(), false);
+  assert.match(h.connections.at(-1).message, /HTTP 403/);
+  assert.match(h.connections.at(-1).message, /未特定/);
+  assert.doesNotMatch(h.connections.at(-1).message, /private detail/);
+  assert.equal(h.connections.at(-1).base, 'http://localhost:50022');
+});
+
+function mountSettings(h, p) {
+  const elements = new Map();
+  for (const id of ['voicevoxBase', 'voicevoxSettingsMessage', 'voicevoxVersion', 'voicevoxEngineSettings', 'voicevoxSettings', 'voicevoxBaseReset']) {
+    elements.set(id, { value: '', textContent: '', attributes: {}, handlers: {},
+      setAttribute(key, value) { this.attributes[key] = value; },
+      addEventListener(type, handler) { this.handlers[type] = handler; }, focus() { this.focused = true; } });
+  }
+  mountLocalVoicevox({ voicevox: h.adapter, preference: p.control, document: { getElementById: id => elements.get(id) } });
+  let prevented = 0;
+  return { get: id => elements.get(id), submit(value) {
+    elements.get('voicevoxBase').value = value;
+    elements.get('voicevoxSettings').handlers.submit({ preventDefault() { prevented++; } });
+    assert.ok(prevented);
+  } };
+}
+
+test('settings UI validates before changing, updates saved links, resets silently and preserves voice preferences', () => {
+  const storage = new Map([['qwVoicevoxBase', 'http://localhost:50022'], ['qwSpeechVoice', 'voicevox:7'], ['qwPreferVoicevox', 'true']]);
+  const h = harness(undefined, { storage }), p = preference(h), ui = mountSettings(h, p);
+  assert.equal(ui.get('voicevoxBase').value, 'http://localhost:50022');
+  assert.equal(ui.get('voicevoxVersion').href, 'http://localhost:50022/version');
+  ui.submit('http://other-pc:50021');
+  assert.equal(ui.get('voicevoxBase').attributes['aria-invalid'], 'true');
+  assert.equal(ui.get('voicevoxBase').focused, true);
+  assert.equal(ui.get('voicevoxEngineSettings').href, 'http://localhost:50022/setting');
+  assert.equal(h.adapter.base, 'http://localhost:50022');
+  ui.submit(' http://[::1]:50023/ ');
+  assert.equal(ui.get('voicevoxBase').value, 'http://[::1]:50023');
+  assert.equal(ui.get('voicevoxVersion').href, 'http://[::1]:50023/version');
+  assert.equal(ui.get('voicevoxEngineSettings').href, 'http://[::1]:50023/setting');
+  assert.equal(ui.get('voicevoxBase').attributes['aria-invalid'], 'false');
+  assert.match(ui.get('voicevoxSettingsMessage').textContent, /保存しました/);
+  ui.get('voicevoxBaseReset').handlers.click();
+  assert.equal(ui.get('voicevoxBase').value, VOICEVOX_BASE);
+  assert.equal(h.storage.get('qwVoicevoxBase'), VOICEVOX_BASE);
+  assert.equal(h.storage.get('qwSpeechVoice'), 'voicevox:7');
+  assert.equal(h.storage.get('qwPreferVoicevox'), 'true');
+  assert.equal(h.statuses.at(-1).enabled, false);
+  assert.equal(h.requests.length + h.audio.length + h.nativePlayed.length, 0);
+});
+
+test('settings UI explains session-only configuration when storage is blocked', () => {
+  const h = harness(undefined, { storageBlocked: true }), p = preference(h), ui = mountSettings(h, p);
+  ui.submit('http://localhost:50022');
+  assert.match(ui.get('voicevoxSettingsMessage').textContent, /今回のみ/);
+  assert.equal(h.adapter.base, 'http://localhost:50022');
+  assert.equal(h.requests.length, 0);
 });
