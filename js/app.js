@@ -1,5 +1,5 @@
 import { createSpeechController, quakeAnnouncement, eewAnnouncement } from './speech.js';
-import { createVoicevoxEnvironment, createVoicevoxPreference } from './voicevox.js';
+import { createVoicevoxEnvironment, createVoicevoxPreference, mountLocalVoicevox } from './voicevox.js';
 import { mountCloudVoicevox } from './cloud-voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
@@ -181,6 +181,8 @@ const voicevox = createVoicevoxEnvironment({ environment: window, onFallback: up
   $('voicevoxConnect').disabled = info.phase === 'connecting';
   $('voicevoxStatus').textContent = info.message;
   $('voicevoxStatus').dataset.phase = info.phase;
+  $('voicevoxBaseCurrent').textContent = info.base;
+  if (info.phase === 'error' || info.phase === 'fallback') $('voicevoxTroubleshooting').open = true;
 }, onCloudStatus(info) {
   $('cloudVoicevoxStatus').textContent = info.message;
   $('cloudVoicevoxStatus').dataset.phase = info.phase;
@@ -195,6 +197,7 @@ const voicevoxPreference = createVoicevoxPreference({ voicevox, speech, environm
 });
 const alarmAnnouncer = createAlarmAnnouncer({ alarm, speech });
 const cloudVoicevox = mountCloudVoicevox({ voicevox, speech, preference: voicevoxPreference });
+mountLocalVoicevox({ voicevox, preference: voicevoxPreference });
 
 function rememberAnnouncement(text) {
   state.lastAnnouncement = text;

@@ -138,6 +138,16 @@ button:disabled {
 .cloud-voicevox summary { cursor: pointer; min-height: 32px; display: list-item; }
 .local-voicevox { margin-top: 8px; }
 .local-voicevox summary { cursor: pointer; font-size: 12px; min-height: 32px; }
+.voicevox-settings { display: grid; gap: 6px; margin-top: 6px; min-width: 0; font-size: 12px; }
+.voicevox-settings input { width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid #476170; border-radius: 6px; color: inherit; background: #14212c; font-size: 16px; }
+.voicevox-settings input[aria-invalid="true"] { border-color: #ffb8a9; }
+.voicevox-settings-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.voicevox-settings-actions button { padding: 6px 8px; font-size: 12px; }
+.local-voicevox .speech-status, .voicevox-help { overflow-wrap: anywhere; }
+.voicevox-help { margin-top: 8px; font-size: 12px; line-height: 1.6; }
+.voicevox-help ol { padding-left: 22px; }
+.voicevox-help li { margin-bottom: 8px; }
+.voicevox-help a { color: #9fd9ef; }
 .browser-speech { margin-top: 8px; padding: 6px 8px; font-size: 12px; }
 .cloud-voicevox .alarm-toggle { white-space: normal; margin: 6px 0; }
 .cloud-voicevox input { flex: none; }
