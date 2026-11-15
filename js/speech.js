@@ -34,9 +34,12 @@ export function createSpeechController({ environment = window, onStatus = () => 
   };
 
   function report() {
+    const googleVoice = japanese.find(v => !/^voicevox(?:-cloud)?:/.test(voiceId(v))
+      && /^Google(?:\s|$)/i.test(v.name));
     onStatus({
       supported, enabled, phase, error, voice: voice?.name || '', preferredVoice,
       voices: japanese.map(v => ({ id: voiceId(v), name: v.name, lang: v.lang, localService: Boolean(v.localService) })),
+      googleVoiceId: googleVoice ? voiceId(googleVoice) : '',
       lastText, started, completed
     });
   }

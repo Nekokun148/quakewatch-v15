@@ -355,3 +355,19 @@ test('sensing region codes use the published regional mapping', () => {
   assert.equal(SENSING_AREAS[705].name, '沖縄八重山');
   assert.equal(SENSING_AREAS[901], undefined);
 });
+
+test('Google Japanese is available after the browser loads voices and is silent until speech is requested', () => {
+  const english = { voiceURI: 'google-en', name: 'Google English', lang: 'en-US' };
+  const vox = { voiceURI: 'voicevox:1', name: 'Google test', lang: 'ja-JP' };
+  const google = { voiceURI: 'Google 日本語', name: 'Google 日本語', lang: 'ja-JP', localService: false };
+  const h = harness([english, vox]);
+  assert.equal(h.status().googleVoiceId, '');
+  h.voicesChanged([english, vox, google]);
+  assert.equal(h.status().googleVoiceId, google.voiceURI);
+  assert.equal(h.controller.setVoice(h.status().googleVoiceId), true);
+  assert.equal(h.status().enabled, false);
+  assert.deepEqual(h.played, []);
+  h.controller.enable();
+  h.controller.say('TEST ONLY');
+  assert.equal(h.played[0].voice, google);
+});

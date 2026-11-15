@@ -140,6 +140,14 @@ function updateSpeechUi(info) {
   $('speechToggle').disabled = !info.supported;
   $('speechTest').disabled = !info.supported;
   $('browserSpeech').disabled = !window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== 'function';
+  const googleButton = $('googleSpeech');
+  googleButton.disabled = !info.googleVoiceId;
+  googleButton.value = info.googleVoiceId;
+  const googleVoice = info.voices.find(v => v.id === info.googleVoiceId);
+  const googleStatus = !googleVoice ? 'このブラウザの音声一覧にGoogle 日本語がありません。'
+    : googleVoice.localService ? 'Google 日本語を端末で利用できます。'
+    : 'Google 日本語の読み上げには、ブラウザのオンライン音声サービスを使います。';
+  if ($('googleSpeechStatus').textContent !== googleStatus) $('googleSpeechStatus').textContent = googleStatus;
   $('readLatest').disabled = !info.supported || !state.lastAnnouncement;
   const select = $('speechVoice');
   const optionsKey = JSON.stringify([info.voices, info.preferredVoice]);
@@ -907,6 +915,10 @@ $('speechVoice').addEventListener('change', event => {
 
 $('voicevoxConnect').addEventListener('click', () => { cloudVoicevox.disable(); void voicevoxPreference.connect(); });
 $('browserSpeech').addEventListener('click', () => { cloudVoicevox.disable(); voicevoxPreference.setPreferred(false); updateSpeechFallback(null); });
+$('googleSpeech').addEventListener('click', event => {
+  const id = event.currentTarget.value;
+  if (id && cloudVoicevox.selectVoice(id)) updateSpeechFallback(null);
+});
 $('cloudVoicevoxConsent').addEventListener('change', event => { if (!event.target.checked) updateSpeechFallback(null); });
 $('voicevoxPrefer').addEventListener('change', event => {
   const preferred = event.target.checked;

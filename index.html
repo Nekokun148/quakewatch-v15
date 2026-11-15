@@ -50,6 +50,8 @@
           <select id="speechVoice" disabled><option value="">自動選択（日本語）</option></select>
         </label>
         <button id="browserSpeech" class="browser-speech" type="button" title="ブラウザ標準の日本語音声を選択">ブラウザ標準</button>
+        <button id="googleSpeech" class="browser-speech" type="button" disabled aria-describedby="googleSpeechStatus">Google 日本語を選ぶ</button>
+        <p id="googleSpeechStatus" class="speech-status">Google 日本語音声を確認中</p>
         <details class="cloud-voicevox" open>
           <summary>クラウドVOICEVOX（アプリ不要）</summary>
           <p id="cloudVoicevoxNotice">非公式のtts.questへ読み上げ文を送信します。生成音声のURLを知る人は音声を取得できる場合があります。利用制限・遅延時はブラウザ標準へ切り替えます。同意は保存しません。</p>
