@@ -1,7 +1,7 @@
 export const JMA_QUAKE_BASE = 'https://www.jma.go.jp/bosai/quake/data/';
 export const INTENSITY_COLORS = {
   10: '#7dd3fc', 20: '#4ade80', 30: '#facc15', 40: '#fb923c',
-  45: '#f87171', 50: '#ef4444', 55: '#e879f9', 60: '#c026d3', 70: '#ffffff'
+  45: '#f87171', 50: '#ef4444', 55: '#e879f9', 60: '#c026d3', 70: '#7e22ce'
 };
 
 const JMA_SCALES = { '1': 10, '2': 20, '3': 30, '4': 40, '5-': 45, '5+': 50, '6-': 55, '6+': 60, '7': 70 };

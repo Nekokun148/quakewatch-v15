@@ -410,7 +410,7 @@ button:disabled {
 .intensity-5-upper { background: #ef4444; }
 .intensity-6 { background: #e879f9; }
 .intensity-6-upper { background: #c026d3; }
-.intensity-7 { background: #fff; }
+.intensity-7 { background: #7e22ce; }
 .region-summary-list { display: grid; gap: 5px; margin-bottom: 10px; }
 .region-summary { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #c9d4e6; }
 .region-summary > span { min-width: 0; overflow-wrap: anywhere; }
