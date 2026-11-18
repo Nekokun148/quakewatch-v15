@@ -136,7 +136,32 @@ export function parseJmaQuake(document) {
   };
 }
 
-export function createObservationFeed({ fetcher = fetch, onData = () => {}, onStatus = () => {} } = {}) {
+export function jmaQuakeHistory(list) {
+  const latest = new Map();
+  const entries = list.filter(entry => entry?.ttl === '震源・震度情報' && entry.eid && parseReportTime(entry.rdt))
+    .sort((a, b) => parseReportTime(b.rdt) - parseReportTime(a.rdt) || Number(b.ser) - Number(a.ser));
+  for (const entry of entries) {
+    if (!latest.has(entry.eid)) latest.set(entry.eid, entry);
+  }
+  return [...latest.values()].filter(entry => entry.ift !== '取消' && parseReportTime(entry.at)).map(entry => {
+    const coordinate = /^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?\/$/.exec(entry.cod || '');
+    return {
+      id: `jma-history-${entry.eid}`,
+      earthquake: {
+        time: entry.at, maxScale: JMA_SCALES[entry.maxi] ?? -1,
+        hypocenter: {
+          name: entry.anm,
+          latitude: coordinate ? Number(coordinate[1]) : null,
+          longitude: coordinate ? Number(coordinate[2]) : null,
+          depth: coordinate?.[3] ? Math.max(0, -Number(coordinate[3]) / 1000) : null,
+          magnitude: entry.mag != null && entry.mag !== '' && Number.isFinite(Number(entry.mag)) ? Number(entry.mag) : null
+        }
+      }
+    };
+  });
+}
+
+export function createObservationFeed({ fetcher = fetch, onData = () => {}, onStatus = () => {}, onHistory = () => {} } = {}) {
   let busy = false;
   let lastFile = '';
   let initialized = false;
@@ -149,6 +174,7 @@ export function createObservationFeed({ fetcher = fetch, onData = () => {}, onSt
       if (!listResponse.ok) throw new Error('list');
       const list = await listResponse.json();
       if (!Array.isArray(list)) throw new Error('format');
+      onHistory(jmaQuakeHistory(list));
       const item = list.filter(entry => entry.ttl === '震源・震度情報' && entry.ift !== '取消' && /^\d+_\d+_VXSE[\w]+_\d+\.json$/.test(entry.json || ''))
         .sort((a, b) => parseReportTime(b.rdt) - parseReportTime(a.rdt))[0];
       if (!item) { onStatus('empty', '観測震度の発表なし'); return; }

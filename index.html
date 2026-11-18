@@ -96,31 +96,40 @@
         <img id="monitorScale" class="monitor-scale" alt="防災科研公式の観測指標スケール" width="55" height="301" hidden>
       </div>
       <div class="map-source">
+        <label for="stationNetwork">地図の観測網</label>
+        <select id="stationNetwork">
+          <option value="all">すべて</option>
+          <option value="K-NET">K-NET</option>
+          <option value="KiK-net">KiK-net</option>
+        </select>
         <span id="monitorCoverage">観測画像の色：未受信</span>
+        <span id="monitorNetworkCoverage"></span>
         <a href="http://www.kmoni.bosai.go.jp/" target="_blank" rel="noopener noreferrer">防災科研 強震モニタ</a>
         <a href="https://www.kyoshin.bosai.go.jp/ja/about_kmoni/" target="_blank" rel="noopener noreferrer">利用条件</a>
       </div>
       <details class="map-legend">
         <summary>凡例</summary>
+        <p id="intensityLegendHeading" class="intensity-legend-heading">発表震度</p>
+        <ul class="intensity-legend" aria-labelledby="intensityLegendHeading">
+          <li class="intensity-1">1</li>
+          <li class="intensity-2">2</li>
+          <li class="intensity-3">3</li>
+          <li class="intensity-4">4</li>
+          <li class="intensity-5">5弱</li>
+          <li class="intensity-5-upper">5強</li>
+          <li class="intensity-6">6弱</li>
+          <li class="intensity-6-upper">6強</li>
+          <li class="intensity-7">7</li>
+        </ul>
         <div class="legend">
-        <span><i class="dot land-station"></i>未受信</span>
-        <span><i class="dot sea-station"></i>海底観測点（未受信）</span>
-        <span>発表震度：</span>
-        <span><i class="dot intensity-1"></i>震度1</span>
-        <span><i class="dot intensity-2"></i>2</span>
-        <span><i class="dot intensity-3"></i>3</span>
-        <span><i class="dot intensity-4"></i>4</span>
-        <span><i class="dot intensity-5"></i>5弱</span>
-        <span><i class="dot intensity-5-upper"></i>5強</span>
-        <span><i class="dot intensity-6"></i>6弱</span>
-        <span><i class="dot intensity-6-upper"></i>6強</span>
-        <span><i class="dot intensity-7"></i>7</span>
-        <span><i class="dot epicenter"></i>震源</span>
-        <span><i class="dot p-wave"></i>P波到達予測</span>
-        <span><i class="dot s-wave"></i>S波到達予測</span>
-        <span><i class="dot eew"></i>緊急地震速報</span>
-        <span><i class="dot sensing"></i>全国感知ネット</span>
-        <span><i class="dot current-location-dot"></i>現在地</span>
+          <span><i class="dot land-station"></i>未受信</span>
+          <span><i class="dot sea-station"></i>海底観測点（未受信）</span>
+          <span><i class="dot epicenter"></i>震源</span>
+          <span><i class="dot p-wave"></i>P波到達予測</span>
+          <span><i class="dot s-wave"></i>S波到達予測</span>
+          <span><i class="dot eew"></i>緊急地震速報</span>
+          <span><i class="dot sensing"></i>全国感知ネット</span>
+          <span><i class="dot current-location-dot"></i>現在地</span>
         </div>
       </details>
     </section>
@@ -188,7 +197,26 @@
 
       <section class="card">
         <h2>地震履歴</h2>
-        <p id="quakeHistorySelection" class="muted">履歴未受信</p>
+        <label for="quakeHistoryDay">発生日（日本時間）</label>
+        <select id="quakeHistoryDay">
+          <option value="0">今日</option>
+          <option value="1">昨日</option>
+          <option value="2">2日前</option>
+          <option value="3">3日前</option>
+          <option value="all">配信一覧のすべて</option>
+          <option value="date">日付を指定</option>
+        </select>
+        <label id="quakeHistoryDateLabel" for="quakeHistoryDate" hidden>表示する日付</label>
+        <input id="quakeHistoryDate" type="date" hidden>
+        <p id="quakeHistoryRange" class="muted">気象庁の配信一覧を取得中</p>
+        <p id="quakeHistoryCount" class="muted" role="status">履歴未受信</p>
+        <p id="quakeHistorySelection" class="muted"></p>
+        <p id="quakeWaveformHelp" class="muted" hidden>
+          上の発生時刻を使って防災科研の検索画面で地震を探せます。
+          <a href="https://www.kyoshin.bosai.go.jp/ja/eqdownload/" target="_blank" rel="noopener noreferrer">K-NET・KiK-netの強震記録を検索</a>
+          <a href="https://www.kyoshin.bosai.go.jp/kyoshin/download/" target="_blank" rel="noopener noreferrer">登録者向けダウンロード</a>
+          <a href="https://www.kyoshin.bosai.go.jp/ja/https_download/" target="_blank" rel="noopener noreferrer">ファイル形式・取得方法</a>
+        </p>
         <div id="quakeHistory" class="quake-history"></div>
       </section>
 

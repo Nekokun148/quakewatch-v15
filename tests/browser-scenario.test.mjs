@@ -34,20 +34,20 @@ function scenario() {
 
 function receiver() {
   const state = { seen: new Set(), latestQuake: null, latestObservation: null, bannerTime: 0 };
-  const calls = { waves: [], speech: [], toast: [] };
+  const calls = { waves: [], speech: [], toast: [], metrics: [] };
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {});
     return elements.get(id);
   };
   const context = vm.createContext({
-    state, $: element, document: { querySelector: element }, acceptsQuakeReport, sameQuakeReport,
+    state, $: element, document: { querySelector: element }, acceptsQuakeReport, sameQuakeReport, parseReportTime,
     quakeReportTime: data => parseReportTime(data.issue?.time), selectObservationReport,
     scaleText: scale => scale === 55 ? '6弱' : String(scale), displayObservationTime: value => value,
     escapeHtml: value => String(value), setEventColor() {}, renderObservations() {}, addMarker() {},
     findLatLng: h => h.latitude != null && h.longitude != null ? { lat: h.latitude, lng: h.longitude } : null,
     startWaveAnimation: (...args) => calls.waves.push(args), quakeAnnouncement: () => 'test announcement',
-    rememberQuake() {}, rememberAnnouncement() {}, showToast: text => calls.toast.push(text), speech: { say: text => calls.speech.push(text) }
+    selectMonitorMetric: mode => calls.metrics.push(mode), rememberQuake() {}, rememberAnnouncement() {}, showToast: text => calls.toast.push(text), speech: { say: text => calls.speech.push(text) }
   });
   vm.runInContext(handler, context);
   return { calls, receive: (data, options) => context.handleQuake(data, options) };
@@ -97,4 +97,19 @@ test('normal live reception still animates and announces', () => {
   assert.equal(h.calls.waves.length, 1);
   assert.equal(h.calls.speech.length, 1);
   assert.equal(h.calls.toast.length, 1);
+});
+
+test('new live quake selects real-time intensity once while history and display tests leave the metric alone', () => {
+  const { data, options } = scenario();
+  const h = receiver();
+  const live = { ...data, test: false, issue: { ...data.issue, time: new Date().toISOString() } };
+  h.receive(live, {});
+  h.receive({ ...live, id: live.id + '-follow-up' }, {});
+  assert.deepEqual(h.calls.metrics, ['intensity']);
+  const history = receiver();
+  history.receive(live, { silent: true });
+  assert.deepEqual(history.calls.metrics, []);
+  const training = receiver();
+  training.receive(data, options);
+  assert.deepEqual(training.calls.metrics, []);
 });

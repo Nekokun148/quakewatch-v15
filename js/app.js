@@ -4,7 +4,7 @@ import { mountCloudVoicevox } from './cloud-voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
 import { createLocationController } from './location.js';
-import { measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeReport, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
+import { measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeReport, parseReportTime, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
 import { renderObservationRegions } from './observation-ui.js';
 import { createStrongMotionController } from './strong-motion.js';
 import { createAlarmController, createAlarmAnnouncer } from './alarm.js';
@@ -355,6 +355,19 @@ function buildOffshoreStations() {
   return SEAFLOOR_STATIONS.map(s => ({ ...s, title: `${s.network} ${s.code} / 水深${s.depth}m / 観測値未受信` }));
 }
 
+function filterObservationNetwork() {
+  const network = $('stationNetwork').value;
+  $('map').dataset.stationNetwork = network;
+  for (const { layer, station } of stationCircles.values()) {
+    const visible = network === 'all' || station.network === network;
+    if (visible && !state.stationLayer.hasLayer(layer)) state.stationLayer.addLayer(layer);
+    if (!visible && state.stationLayer.hasLayer(layer)) state.stationLayer.removeLayer(layer);
+  }
+  updateDiagnostics();
+}
+
+$('stationNetwork').addEventListener('change', filterObservationNetwork);
+
 function renderLeafletObservationNetwork() {
   if (!state.stationLayer || !window.L) return;
   const L = window.L;
@@ -378,7 +391,7 @@ function renderLeafletObservationNetwork() {
   };
   state.leafletMap.on('zoomend', updateRadii);
   updateRadii();
-  updateDiagnostics();
+  filterObservationNetwork();
 }
 
 function stationTooltip(station) {
@@ -419,10 +432,11 @@ function renderLocalObservationNetwork() {
       cx: p.x,
       cy: p.y,
       r: s.type === 'sea' ? 4.2 : 3.2,
+      'data-network': s.network,
       class: s.type === 'sea' ? 'sea-station-svg' : 'land-station-svg'
     }));
   }
-  updateDiagnostics();
+  filterObservationNetwork();
 }
 
 function renderLocalMap() {
@@ -564,6 +578,14 @@ function renderObservations(data) {
 }
 
 const quakeHistory = [];
+let jmaHistory = null;
+const historyDate = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+});
+const historyKey = report => `${parseReportTime(report.earthquake?.time)}/${report.earthquake?.hypocenter?.name || ''}`;
+$('quakeHistoryDate').value = historyDate.format(Date.now()).replaceAll('/', '-');
+$('quakeHistoryDay').addEventListener('change', renderQuakeHistory);
+$('quakeHistoryDate').addEventListener('change', renderQuakeHistory);
 function rememberQuake(d) {
   const index = quakeHistory.findIndex(previous => previous.earthquake?.time && previous.earthquake.time === d.earthquake?.time && previous.earthquake.hypocenter?.name === d.earthquake.hypocenter?.name);
   if (index >= 0) quakeHistory.splice(index, 1);
@@ -575,7 +597,31 @@ function renderQuakeHistory() {
   const list = $('quakeHistory');
   if (!list) return;
   list.replaceChildren();
-  for (const report of quakeHistory) {
+  const selection = $('quakeHistoryDay').value;
+  const custom = selection === 'date';
+  $('quakeHistoryDate').hidden = !custom;
+  $('quakeHistoryDateLabel').hidden = !custom;
+  const date = selection === 'all' ? ''
+    : custom ? $('quakeHistoryDate').value.replaceAll('-', '/')
+    : historyDate.format(Date.now() - Number(selection) * 86400000);
+  if (jmaHistory) {
+    const dates = jmaHistory.map(report => parseReportTime(report.earthquake?.time)).filter(Boolean);
+    $('quakeHistoryRange').textContent = dates.length
+      ? `気象庁の配信一覧：${historyDate.format(Math.min(...dates))} ～ ${historyDate.format(Math.max(...dates))}`
+      : '気象庁の配信一覧に地震情報なし';
+  }
+  const reports = new Map();
+  for (const report of [...(jmaHistory || []), ...quakeHistory]) {
+    const time = parseReportTime(report.earthquake?.time);
+    if (!time || (selection !== 'all' && historyDate.format(time) !== date) || report.test || report.isTraining) continue;
+    reports.set(historyKey(report), report);
+  }
+  const ordered = [...reports.values()].sort((a, b) => parseReportTime(b.earthquake.time) - parseReportTime(a.earthquake.time));
+  const dateLabel = selection === 'all' ? '配信一覧のすべて' : date || '日付を選択してください';
+  const countText = ordered.length ? `${dateLabel} / ${ordered.length}件`
+    : jmaHistory ? `${dateLabel} / 取得済みの一覧に該当情報なし` : `${dateLabel} / 気象庁の履歴未受信`;
+  if ($('quakeHistoryCount').textContent !== countText) $('quakeHistoryCount').textContent = countText;
+  for (const report of ordered) {
     const q = report.earthquake || {}, h = q.hypocenter || {};
     const button = document.createElement('button');
     button.type = 'button';
@@ -586,11 +632,11 @@ function renderQuakeHistory() {
       if (state.localMap) state.localMap.waveLayer.innerHTML = '';
       addMarker(findLatLng(h), `履歴：${h.name || '震源不明'}`, 'quake');
       state.quakeHighlight?.clear();
+      $('quakeWaveformHelp').hidden = false;
       $('quakeHistorySelection').textContent = `履歴表示：${displayObservationTime(q.time)} / ${h.name || '震源不明'} / M${h.magnitude ?? '-'} / 深さ${h.depth ?? '-'}km`;
     });
     list.appendChild(button);
   }
-  $('quakeHistorySelection').textContent = quakeHistory.length ? '最新の震源を表示' : '履歴未受信';
 }
 
 function handleQuake(d, options = {}) {
@@ -602,6 +648,14 @@ function handleQuake(d, options = {}) {
   if (state.seen.size > 300) state.seen.delete(state.seen.values().next().value);
   if (!acceptsQuakeReport(state.latestQuake, d)) return;
   const sameReport = sameQuakeReport(state.latestQuake, d);
+  const reportAge = Date.now() - quakeReportTime(d);
+  const originTime = parseReportTime(q.time);
+  const previousOriginTime = parseReportTime(state.latestQuake?.earthquake?.time);
+  const newEvent = originTime ? originTime !== previousOriginTime : !sameReport;
+  if (!options.silent && newEvent && d.test !== true && d.isTraining !== true
+      && reportAge >= -10000 && reportAge <= 120000) {
+    selectMonitorMetric('intensity');
+  }
   state.latestQuake = d;
   rememberQuake(d);
   const max = q.maxScale;
@@ -634,6 +688,9 @@ function handleEEW(d, options = {}) {
   if (!received.accepted) return;
   const info = received.info;
   if (options.silent && info.time < state.bannerTime) return;
+  if (received.firstLive && !d.unmatchedCancel && info.time >= state.bannerTime) {
+    selectMonitorMetric('intensity');
+  }
   const e = d.earthquake || {};
   const h = e.hypocenter || {};
   $('eewCard').hidden = false;
@@ -978,10 +1035,15 @@ const strongMotion = createStrongMotionController({
     renderMonitorChanges(monitorChanges.receive({ colors, metric: frame.metric, observedAt: frame.observedAt }));
     monitorObservation = frame;
     let received = 0;
+    const byNetwork = { 'K-NET': 0, 'KiK-net': 0 };
     for (const [code, color] of colors) {
       const circle = stationCircles.get(code);
       if (!circle) continue;
-      if (color) received++;
+      if (color) {
+        received++;
+        const network = circle.station?.network;
+        if (Object.hasOwn(byNetwork, network)) byNetwork[network]++;
+      }
       if (circle.color === color) continue;
       circle.color = color;
       circle.layer.setStyle({ fillColor: color || UNRECEIVED_COLOR, fillOpacity: color ? 1 : .55 });
@@ -990,6 +1052,7 @@ const strongMotion = createStrongMotionController({
     if ($('monitorScale').getAttribute('src') !== scale) $('monitorScale').src = scale;
     $('monitorScale').hidden = false;
     $('monitorCoverage').textContent = `観測画像の色：${received}地点 / 数値未取得`;
+    $('monitorNetworkCoverage').textContent = `画像色を受信：K-NET ${byNetwork['K-NET']}地点 / KiK-net ${byNetwork['KiK-net']}地点`;
     $('monitorTime').textContent = `${displayObservationTime(frame.observedAt)} JST`;
     $('monitorTime').dateTime = frame.observedAt;
     document.body.dataset.qwMonitorTime = frame.observedAt;
@@ -1026,6 +1089,7 @@ function selectMonitorMetric(mode) {
   monitorObservation = null;
   $('monitorScale').hidden = true;
   $('monitorCoverage').textContent = '観測画像の色：未受信';
+  $('monitorNetworkCoverage').textContent = '';
   $('monitorTime').textContent = '観測画像未受信';
   $('monitorTime').removeAttribute('datetime');
   delete document.body.dataset.qwMonitorTime;
@@ -1089,6 +1153,10 @@ const yditsFeed = createYditsFeed({
 });
 void yditsFeed.start();
 const observationFeed = createObservationFeed({
+  onHistory(reports) {
+    jmaHistory = reports;
+    renderQuakeHistory();
+  },
   onData: (data, options) => onData(data, options),
   onStatus(phase, text) {
     $('observationFeedStatus').textContent = text;

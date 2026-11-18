@@ -43,10 +43,12 @@ export function createEEWTracker() {
     const serial = Number(data.issue?.serial) || 0;
     const key = `${serial}/${info.time}/${info.cancelled}/${info.final}/${info.forecast}/${info.last}/${info.maxScale}`;
     if (old && (old.key === key || (old.source === data.source && serial < old.serial) || (info.time && info.time < old.time))) return { accepted: false, info };
-    events.set(eventKey, { key, serial, source: data.source, time: info.time, scale: info.maxScale, warned: !info.forecast });
-    if (events.size > 50) events.delete(events.keys().next().value);
     const fresh = info.time > 0 && now - info.time >= -10000 && now - info.time <= 120000;
+    const live = !silent && fresh && !info.training && !info.cancelled;
+    events.set(eventKey, { key, serial, source: data.source, time: info.time, scale: info.maxScale,
+      warned: !info.forecast, seenLive: old?.seenLive || live });
+    if (events.size > 50) events.delete(events.keys().next().value);
     const escalation = !old || info.maxScale > old.scale || (!info.forecast && !old.warned);
-    return { accepted: true, info, sound: !silent && fresh && !info.training && !info.cancelled && escalation && meetsAlarmThreshold(info.maxScale) };
+    return { accepted: true, info, firstLive: live && !old?.seenLive, sound: live && escalation && meetsAlarmThreshold(info.maxScale) };
   };
 }

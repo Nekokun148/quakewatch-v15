@@ -194,7 +194,7 @@ test('production image reception updates colors but does not display an earthqua
   const pipeline = source.slice(source.indexOf('let monitorFrames = 0;'), source.indexOf('let monitorMetric;'));
   const h = harness(), elements = new Map(), styles = [];
   const stations = new Map([...h.stations].map(([code, entry]) => [code, {
-    ...entry, layer: { setStyle: style => styles.push(style) }
+    ...entry, station: { ...entry.station, network: 'KiK-net' }, layer: { setStyle: style => styles.push(style) }
   }]));
   const document = h.document;
   document.body = { dataset: {} };
@@ -236,6 +236,7 @@ test('production image reception updates colors but does not display an earthqua
   assert.equal(document.body.dataset.qwMonitorChanges, '1');
   assert.equal(document.body.dataset.qwMonitorFrames, '2');
   assert.equal(document.body.dataset.qwLiveStations, '1');
+  assert.match(elements.get('monitorNetworkCoverage').textContent, /K-NET 0地点 \/ KiK-net 1地点/);
   assert.equal(styles.at(-1).fillColor, '#00ff00');
   callbacks.onStatus('error', 'test reception failure');
   assert.equal(h.rings.layers.length, 0); assert.equal(h.labels.children.length, 0);
@@ -248,3 +249,27 @@ test('production image reception updates colors but does not display an earthqua
 });
 
 
+
+test('network selection filters only station layers and restores all networks', async () => {
+  const source = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const entries = new Map(['K-NET', 'KiK-net', 'S-net'].map(network =>
+    [network, { station: { network }, layer: { network } }]));
+  const shown = new Set([...entries.values()].map(entry => entry.layer));
+  const elements = { stationNetwork: { value: 'KiK-net' }, map: { dataset: {} } };
+  const state = { stationLayer: {
+    hasLayer: layer => shown.has(layer),
+    addLayer: layer => shown.add(layer),
+    removeLayer: layer => shown.delete(layer)
+  } };
+  const context = vm.createContext({ state, stationCircles: entries, $: id => elements[id], updateDiagnostics() {} });
+  vm.runInContext(source.slice(source.indexOf('function filterObservationNetwork()'), source.indexOf("$('stationNetwork').addEventListener")), context);
+  context.filterObservationNetwork();
+  assert.deepEqual([...shown].map(layer => layer.network), ['KiK-net']);
+  elements.stationNetwork.value = 'K-NET';
+  context.filterObservationNetwork();
+  assert.deepEqual([...shown].map(layer => layer.network), ['K-NET']);
+  elements.stationNetwork.value = 'all';
+  context.filterObservationNetwork();
+  assert.equal(shown.size, 3);
+  assert.equal(elements.map.dataset.stationNetwork, 'all');
+});

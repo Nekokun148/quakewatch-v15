@@ -246,7 +246,7 @@ test('same report across failover/reconnect is delivered once and late/training 
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
 const handler = app.slice(app.indexOf('function handleEEW('), app.indexOf('function handleUserSensing('));
 function eewUi() {
-  const calls = { waves: [], cancels: 0, clears: 0, alerts: [] }, elements = new Map();
+  const calls = { waves: [], cancels: 0, clears: 0, alerts: [], metrics: [] }, elements = new Map();
   const element = id => { if (!elements.has(id)) elements.set(id, { appendChild() {} }); return elements.get(id); };
   const state = { bannerTime: 0, waveLayer: { clearLayers() { calls.clears++; } } };
   const receiveEEW = createEEWTracker();
@@ -256,6 +256,7 @@ function eewUi() {
     escapeHtml: value => String(value), displayObservationTime: value => value, addMarker() {},
     findLatLng: h => h.latitude == null || h.longitude == null ? null : { lat: h.latitude, lng: h.longitude },
     startWaveAnimation: (...args) => calls.waves.push(args), clearWaveTimers() { calls.clears++; },
+    selectMonitorMetric: mode => calls.metrics.push(mode),
     eewAnnouncement, rememberAnnouncement() {}, showToast() {},
     alarmAnnouncer: { cancel() { calls.cancels++; }, announce: (...args) => calls.alerts.push(args) } });
   vm.runInContext(handler, context);
@@ -280,6 +281,8 @@ test('YDITS warning updates UI and alarm without inventing P/S waves or region f
   assert.match(h.elements.get('eewWaveStatus').textContent, /震源座標未受信/);
   assert.match(h.elements.get('headlineSub').textContent, /地域別予測未受信/);
   h.receive(data); assert.equal(h.calls.alerts.length, 1);
+  h.receive({ ...data, issue: { ...data.issue, serial: Number(data.issue.serial || 0) + 1 } });
+  assert.deepEqual(h.calls.metrics, ['intensity']);
 });
 
 test('only explicit real coordinates allow P/S; assumed, PLUM and training reports do not create waves', () => {
@@ -299,6 +302,7 @@ test('unmatched, silent and training cancellation cannot stop or overwrite an un
     [{ ...base, cancelled: true, test: true }, {}], [{ ...base, cancelled: true }, { silent: true }]]) {
     const h = eewUi(); h.receive(data, options);
     assert.equal(h.calls.cancels, 0); assert.equal(h.calls.clears, 0); assert.equal(h.calls.alerts.length, 0);
+    assert.deepEqual(h.calls.metrics, []);
     if (data.unmatchedCancel || data.test) assert.equal(h.state.bannerTime, 0);
   }
   const h = eewUi(); h.receive({ ...base, cancelled: true });

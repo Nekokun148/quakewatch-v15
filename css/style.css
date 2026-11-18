@@ -220,6 +220,11 @@ button:disabled {
 .map-stage .monitor-scale[hidden] { display: none; }
 .map-source { display: flex; flex-wrap: wrap; gap: 5px 14px; padding: 6px 12px; border-top: 1px solid #45464d; font-size: 10px; color: #b6b9c1; }
 .map-source a { color: #afcebd; }
+#stationNetwork { font-family: inherit; }
+#map[data-station-network="K-NET"] [data-network]:not([data-network="K-NET"]),
+#map[data-station-network="KiK-net"] [data-network]:not([data-network="KiK-net"]) {
+  display: none;
+}
 .city-label { color: #c4c5ca; font-size: 10px; text-align: center; text-shadow: 0 1px 2px #202126; white-space: nowrap; }
 .monitor-highlights { position: absolute; inset: 0; z-index: 480; pointer-events: none; overflow: hidden; }
 .monitor-highlight-label { position: absolute; height: 88px; padding-left: 8px; border-left: 2px solid #b6ff66; color: #b6ff66; letter-spacing: 0; line-height: 1.4; overflow-wrap: anywhere; text-shadow: -1px -1px 2px #101518, 1px -1px 2px #101518, -1px 1px 2px #101518, 1px 1px 2px #101518; }
@@ -296,6 +301,30 @@ button:disabled {
 }
 .map-legend { background: #25262c; font-size: 11px; }
 .map-legend > summary { cursor: pointer; padding: 7px 12px; width: fit-content; min-height: 32px; }
+
+.intensity-legend-heading {
+  margin: 2px 12px 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.intensity-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  gap: 4px;
+  margin: 0 11px;
+  padding: 0;
+  list-style: none;
+}
+.intensity-legend li {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  padding: 4px;
+  border-radius: 4px;
+  color: #101010;
+  font-size: 14px;
+  font-weight: 700;
+}
 
 .legend span {
   white-space: nowrap;
@@ -674,3 +703,38 @@ button:disabled {
 }
  .quake-history { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
  .quake-history button { width: 100%; min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
+
+/* Keep the live map prominent while grouping controls and reports. */
+:root {
+  color-scheme: dark;
+}
+
+body { background: #101722; }
+.topbar { background: #141e2c; border-bottom-color: #304056; }
+.app-brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.topbar h1 { font-family: inherit; color: #f1f6ff; letter-spacing: .015em; }
+.current-time { color: #b7c9de; font-variant-numeric: tabular-nums; }
+.audio-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 8px; }
+.audio-summary span { padding: 3px 7px; border-radius: 5px; background: #253448; }
+#settingsToggle { background: #243b54; border-color: #496581; color: #f1f6ff; }
+.topbar > #status { white-space: normal; overflow-wrap: anywhere; color: #b7c9de; }
+
+.settings-panel { background: #101927; border: 1px solid #304056; border-radius: 10px; padding: 12px; }
+.map-toolbar, .map-source, .map-legend { background: #141e2c; }
+.monitor-tabs button[aria-selected="true"] { background: #163f4c; color: #c3f5fa; border-color: #56b6c4; }
+.side-panel { background: #101722; padding: 10px; }
+.side-panel .card { background: #172232; border-radius: 9px; margin-bottom: 8px; }
+.side-panel .hero-card { background: #1d2e43; }
+.side-panel .card h2 { color: #d9e7f8; }
+button:focus-visible, summary:focus-visible, select:focus-visible, a:focus-visible {
+  outline: 2px solid #80d9ec;
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .app-brand { display: grid; gap: 2px; }
+  .header-tools { min-width: 0; }
+  .audio-summary { display: grid; gap: 2px; }
+  .audio-summary span { padding: 2px 4px; }
+  .map-stage { min-height: clamp(300px, 57dvh, 600px); }
+}
