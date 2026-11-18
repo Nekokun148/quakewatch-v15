@@ -578,15 +578,26 @@ function renderObservations(data) {
   for (const point of measured) {
     const title = `${point.pref} ${point.addr} / 観測震度${scaleText(point.scale)} / ${displayObservationTime(data.earthquake?.time)}`;
     if (state.observationLayer && window.L) {
-      window.L.circleMarker([point.lat, point.lng], {
-        pane: 'observationPane', radius: 6, color: '#fff', weight: 1.4,
-        fillColor: point.color, fillOpacity: 1
+      window.L.marker([point.lat, point.lng], {
+        pane: 'observationPane',
+        title,
+        zIndexOffset: Number(point.scale) * 10,
+        icon: window.L.divIcon({
+          className: 'observation-intensity-icon',
+          html: `<span class="intensity-badge" style="--intensity-color:${point.color}" role="img" aria-label="観測震度${scaleText(point.scale)}">${scaleText(point.scale)}</span>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        })
       }).bindTooltip(escapeHtml(title)).addTo(state.observationLayer);
     } else if (state.localMap) {
       const p = projectLatLng(point);
-      const circle = makeSvgElement('circle', { cx: p.x, cy: p.y, r: 6, fill: point.color, stroke: '#fff', 'stroke-width': 1.4 });
-      circle.appendChild(makeSvgElement('title')).textContent = title;
-      state.localMap.observationLayer.appendChild(circle);
+      const group = makeSvgElement('g', { class: 'observation-intensity-svg' });
+      group.appendChild(makeSvgElement('title')).textContent = title;
+      group.appendChild(makeSvgElement('circle', { cx: p.x, cy: p.y, r: 11, fill: point.color }));
+      const label = makeSvgElement('text', { x: p.x, y: p.y, 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+      label.textContent = scaleText(point.scale);
+      group.appendChild(label);
+      state.localMap.observationLayer.appendChild(group);
     }
   }
   renderObservationRegions(data, { document, scaleText, measuredCount: measured.length });
