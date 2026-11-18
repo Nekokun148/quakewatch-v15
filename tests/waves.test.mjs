@@ -2,6 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { animateWaves, waveDistances, WAVE_LIFETIME } from '../js/waves.js';
 
+test('surface circles wait for travel from the reported depth', () => {
+  const initial = waveDistances(1000, 11000, 80);
+  assert.equal(initial.p, 0);
+  assert.equal(initial.s, 0);
+  const later = waveDistances(1000, 31000, 80);
+  assert.ok(Math.abs(later.p - Math.sqrt(180000 ** 2 - 80000 ** 2)) < .001);
+  assert.ok(Math.abs(later.s - Math.sqrt(105000 ** 2 - 80000 ** 2)) < .001);
+  assert.deepEqual(waveDistances(1000, 2000, null), waveDistances(1000, 2000));
+});
+
+test('invalid and implausibly future origins never schedule a forecast circle', () => {
+  for (const origin of [NaN, Infinity, 12001]) {
+    let finished = 0;
+    animateWaves({
+      origin,
+      environment: {
+        Date: { now: () => 1000 },
+        requestAnimationFrame() { assert.fail('invalid origin'); },
+        cancelAnimationFrame() {}
+      },
+      update() { assert.fail('invalid circle'); },
+      finish() { finished++; }
+    });
+    assert.equal(finished, 1);
+  }
+});
+
 test('fractional seconds grow both radii smoothly and cannot create negative radii', () => {
   assert.deepEqual(waveDistances(1000, 1016), { age: 16, p: 96, s: 56 });
   assert.deepEqual(waveDistances(1000, 1032), { age: 32, p: 192, s: 112 });

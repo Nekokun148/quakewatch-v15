@@ -609,6 +609,7 @@ button:disabled {
 }
 
 .local-map .p-ring {
+  stroke-dasharray: 8 6;
   fill: none;
   stroke: #48f08c;
   stroke-width: 4;
@@ -737,4 +738,21 @@ button:focus-visible, summary:focus-visible, select:focus-visible, a:focus-visib
   .audio-summary { display: grid; gap: 2px; }
   .audio-summary span { padding: 2px 4px; }
   .map-stage { min-height: clamp(300px, 57dvh, 600px); }
+}
+
+.wave-prediction {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 850;
+  max-width: calc(100% - 84px);
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #101722e8;
+  color: #eef4ff;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
 }

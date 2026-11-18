@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { parseReportTime } from '../js/observations.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -252,7 +253,7 @@ function eewUi() {
   const receiveEEW = createEEWTracker();
   const context = vm.createContext({ state, $: element, document: { querySelector: element, createElement: () => ({}) },
     receiveEEW: (data, options) => receiveEEW(data, { ...options, now: initial }),
-    setEventColor() {}, scaleText: value => value === 55 ? '6弱' : '不明',
+    parseReportTime, setEventColor() {}, scaleText: value => value === 55 ? '6弱' : '不明',
     escapeHtml: value => String(value), displayObservationTime: value => value, addMarker() {},
     findLatLng: h => h.latitude == null || h.longitude == null ? null : { lat: h.latitude, lng: h.longitude },
     startWaveAnimation: (...args) => calls.waves.push(args), clearWaveTimers() { calls.clears++; },
@@ -283,6 +284,21 @@ test('YDITS warning updates UI and alarm without inventing P/S waves or region f
   h.receive(data); assert.equal(h.calls.alerts.length, 1);
   h.receive({ ...data, issue: { ...data.issue, serial: Number(data.issue.serial || 0) + 1 } });
   assert.deepEqual(h.calls.metrics, ['intensity']);
+});
+
+test('a report without an origin cannot use its issue time for forecast circles', () => {
+  const base = createYditsEEWAdapter()(yditsSnapshot(warning(), initial));
+  const h = eewUi();
+  h.receive({
+    ...base,
+    earthquake: {
+      ...base.earthquake,
+      originTime: undefined,
+      hypocenter: { ...base.earthquake.hypocenter, latitude: 41, longitude: 143 }
+    }
+  });
+  assert.equal(h.calls.waves.length, 0);
+  assert.match(h.elements.get('eewWaveStatus').textContent, /発生時刻未受信/);
 });
 
 test('only explicit real coordinates allow P/S; assumed, PLUM and training reports do not create waves', () => {

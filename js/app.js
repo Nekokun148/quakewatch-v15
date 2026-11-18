@@ -16,7 +16,7 @@ import { createMonitorChangeTracker } from './monitor-changes.js';
 import { createQuakeHighlight } from './quake-highlight.js';
 import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
 import { createWolfxFeed } from './wolfx.js';
-import { animateWaves } from './waves.js';
+import { animateWaves, WAVE_LIFETIME } from './waves.js';
 import { mountTaiwan } from './taiwan-ui.js';
 
 const state = {
@@ -490,25 +490,39 @@ function renderLocalMap() {
 function clearWaveTimers() {
   for (const stop of state.waveTimers) stop();
   state.waveTimers = [];
+  $('wavePrediction').hidden = true;
 }
 
-function startWaveAnimation(pos, originTimeRaw) {
-  if (!pos) return;
+function updateWavePrediction({ age, p, s }, depthKm) {
+  const panel = $('wavePrediction');
+  const text = `P波（緑・破線）${Math.round(p / 1000)}km / S波（橙）${Math.round(s / 1000)}km
+発生から${Math.floor(age / 1000)}秒 / 簡易予測
+P波6km/s・S波3.5km/s / ${Number.isFinite(depthKm) && depthKm >= 0 ? `深さ${depthKm}km反映` : '深さ未受信・未反映'}`;
+  if (panel.textContent !== text) panel.textContent = text;
+  panel.hidden = false;
+}
+
+function startWaveAnimation(pos, originTimeRaw, depthKm) {
   clearWaveTimers();
+  state.waveLayer?.clearLayers();
+  if (state.localMap) state.localMap.waveLayer.innerHTML = '';
+  const origin = parseReportTime(originTimeRaw);
+  if (!pos || !origin || origin > Date.now() + 10000 || Date.now() - origin >= WAVE_LIFETIME) return;
   if (state.leafletMap && window.L) {
-    startLeafletWaveAnimation(pos, originTimeRaw);
+    startLeafletWaveAnimation(pos, origin, depthKm);
     return;
   }
-  if (state.localMap) startLocalWaveAnimation(pos, originTimeRaw);
+  if (state.localMap) startLocalWaveAnimation(pos, origin, depthKm);
 }
 
-function startLeafletWaveAnimation(pos, originTimeRaw) {
+function startLeafletWaveAnimation(pos, origin, depthKm) {
   const L = window.L;
   state.waveLayer.clearLayers();
   const pRing = L.circle(leafletLatLng(pos), {
     radius: 0,
     color: '#48f08c',
-    weight: 2.4,
+    dashArray: '8 6',
+    weight: 3,
     opacity: .9,
     fillOpacity: 0,
     interactive: false
@@ -516,16 +530,17 @@ function startLeafletWaveAnimation(pos, originTimeRaw) {
   const sRing = L.circle(leafletLatLng(pos), {
     radius: 0,
     color: '#ff9d2e',
-    weight: 2.4,
+    weight: 3,
     opacity: .86,
     fillOpacity: 0,
     interactive: false
   }).addTo(state.waveLayer);
-  const origin = parseEventTime(originTimeRaw);
-  const stop = animateWaves({ origin, update: ({ p, s }) => {
-    pRing.setRadius(p);
-    sRing.setRadius(s);
+  const stop = animateWaves({ origin, depthKm, update: distances => {
+    pRing.setRadius(distances.p);
+    sRing.setRadius(distances.s);
+    updateWavePrediction(distances, depthKm);
   }, finish: () => {
+    $('wavePrediction').hidden = true;
     state.waveLayer?.removeLayer(pRing);
     state.waveLayer?.removeLayer(sRing);
     updateDiagnostics();
@@ -534,7 +549,7 @@ function startLeafletWaveAnimation(pos, originTimeRaw) {
   updateDiagnostics();
 }
 
-function startLocalWaveAnimation(pos, originTimeRaw) {
+function startLocalWaveAnimation(pos, origin, depthKm) {
   const p = projectLatLng(pos);
   if (!state.localMap || !p) return;
   state.localMap.waveLayer.innerHTML = '';
@@ -542,11 +557,12 @@ function startLocalWaveAnimation(pos, originTimeRaw) {
   const sRing = makeSvgElement('circle', { cx: p.x, cy: p.y, r: 0, class: 's-ring' });
   state.localMap.waveLayer.appendChild(sRing);
   state.localMap.waveLayer.appendChild(pRing);
-  const origin = parseEventTime(originTimeRaw);
-  const stop = animateWaves({ origin, update: ({ p, s }) => {
-    pRing.setAttribute('r', String(p / 1000 * PX_PER_KM));
-    sRing.setAttribute('r', String(s / 1000 * PX_PER_KM));
+  const stop = animateWaves({ origin, depthKm, update: distances => {
+    pRing.setAttribute('r', String(distances.p / 1000 * PX_PER_KM));
+    sRing.setAttribute('r', String(distances.s / 1000 * PX_PER_KM));
+    updateWavePrediction(distances, depthKm);
   }, finish: () => {
+    $('wavePrediction').hidden = true;
     pRing.remove();
     sRing.remove();
     updateDiagnostics();
@@ -674,7 +690,7 @@ function handleQuake(d, options = {}) {
   const pos = findLatLng(h);
   addMarker(pos, title, 'quake');
   state.quakeHighlight?.update(d, options);
-  if ((!options.silent || options.animateWaves === true) && !sameReport) startWaveAnimation(pos, q.time || d.time);
+  if ((!options.silent || options.animateWaves === true) && !sameReport) startWaveAnimation(pos, q.time, h.depth);
   const text = quakeAnnouncement(d, scaleText);
   rememberAnnouncement(text);
   if (!options.silent && !sameReport) {
@@ -725,16 +741,16 @@ function handleEEW(d, options = {}) {
   } else {
     const pos = findLatLng(h);
     addMarker(pos, `緊急地震速報 ${info.stage}`, 'eew');
-    if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || (d.source === 'DMDATA' && (!e.originTime || info.plum || e.assumed))) && !options.silent && !info.training) {
+    if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || !parseReportTime(e.originTime || e.time) || info.plum || e.assumed) && !options.silent && !info.training) {
       clearWaveTimers();
       state.waveLayer?.clearLayers();
       if (state.localMap) state.localMap.waveLayer.innerHTML = '';
     }
     $('eewWaveStatus').textContent = info.plum ? 'P/S表示：PLUM・到達時刻未確定'
       : e.assumed ? 'P/S表示：仮定震源要素・未確定'
-      : d.source === 'DMDATA' && !e.originTime ? 'P/S表示：発生時刻未受信'
+      : !parseReportTime(e.originTime || e.time) ? 'P/S表示：発生時刻未受信'
       : !pos ? 'P/S表示：震源座標未受信' : 'P/S表示：受信震源からの簡易到達予測';
-    if (!options.silent && !info.training && pos && !info.plum && !e.assumed && (d.source !== 'DMDATA' || e.originTime)) startWaveAnimation(pos, e.originTime || e.time || d.time);
+    if (!options.silent && !info.training && pos && !info.plum && !e.assumed && parseReportTime(e.originTime || e.time)) startWaveAnimation(pos, e.originTime || e.time, h.depth);
   }
   const text = eewAnnouncement(d);
   rememberAnnouncement(text);
