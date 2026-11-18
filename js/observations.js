@@ -36,6 +36,22 @@ export function measuredPoints(points = []) {
   return [...unique.values()].sort((a, b) => Number(b.scale) - Number(a.scale));
 }
 
+export function observationCircle(points = []) {
+  const stations = measuredPoints(points);
+  if (!stations.length) return null;
+  const center = stations[0];
+  const radians = degrees => degrees * Math.PI / 180;
+  let radius = 0;
+  for (const station of stations) {
+    const a = Math.sin(radians(station.lat - center.lat) / 2) ** 2
+      + Math.cos(radians(center.lat)) * Math.cos(radians(station.lat))
+      * Math.sin(radians(station.lng - center.lng) / 2) ** 2;
+    const distance = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, a))));
+    radius = Math.max(radius, distance);
+  }
+  return { lat: center.lat, lng: center.lng, radius, count: stations.length };
+}
+
 export function observedRegions(points = []) {
   const regions = new Map();
   const unique = new Map();

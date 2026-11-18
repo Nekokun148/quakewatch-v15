@@ -4,7 +4,7 @@ import { mountCloudVoicevox } from './cloud-voicevox.js';
 import { SENSING_AREAS } from './sensing-areas.js';
 import { SEAFLOOR_STATIONS } from './seafloor-stations.js';
 import { createLocationController } from './location.js';
-import { measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeReport, parseReportTime, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
+import { observationCircle, measuredPoints, selectObservationReport, acceptsQuakeReport, sameQuakeReport, parseReportTime, displayObservationTime, quakeReportTime, intensityColor, createObservationFeed } from './observations.js';
 import { renderObservationRegions } from './observation-ui.js';
 import { createStrongMotionController } from './strong-motion.js';
 import { createAlarmController, createAlarmAnnouncer } from './alarm.js';
@@ -28,6 +28,7 @@ const state = {
   locationEnabled: false,
   locationLayer: null,
   observationLayer: null,
+  observationExtentLayer: null,
   latestQuake: null,
   latestObservation: null,
   bannerTime: 0,
@@ -478,11 +479,13 @@ function renderLocalMap() {
   const stationLayer = makeSvgElement('g');
   const markerLayer = makeSvgElement('g');
   const observationLayer = makeSvgElement('g');
+  const observationExtentLayer = makeSvgElement('g');
   svg.appendChild(waveLayer);
   svg.appendChild(stationLayer);
+  svg.appendChild(observationExtentLayer);
   svg.appendChild(observationLayer);
   svg.appendChild(markerLayer);
-  state.localMap = { svg, waveLayer, stationLayer, observationLayer, markerLayer };
+  state.localMap = { svg, waveLayer, stationLayer, observationLayer, observationExtentLayer, markerLayer };
   renderLocalObservationNetwork();
   updateDiagnostics();
 }
@@ -571,7 +574,37 @@ function startLocalWaveAnimation(pos, origin, depthKm) {
   updateDiagnostics();
 }
 
+function renderObservationExtent(data) {
+  state.observationExtentLayer?.clearLayers();
+  if (state.localMap) state.localMap.observationExtentLayer.innerHTML = '';
+  const extent = observationCircle(data.points);
+  const status = $('observedExtentStatus');
+  if (!extent) {
+    status.textContent = '観測点の範囲：座標付き観測震度を待機中';
+    return;
+  }
+  const text = `観測点の範囲：${extent.count}地点 / 発生 ${displayObservationTime(data.earthquake?.time)}`;
+  status.textContent = text;
+  if (state.observationExtentLayer && window.L) {
+    const options = { pane: 'observationPane', color: '#55dce8', weight: 2, dashArray: '3 7', fillOpacity: .03 };
+    const circle = extent.radius > 0
+      ? window.L.circle([extent.lat, extent.lng], { ...options, radius: extent.radius })
+      : window.L.circleMarker([extent.lat, extent.lng], { ...options, radius: 14 });
+    circle.bindTooltip(escapeHtml(text)).addTo(state.observationExtentLayer);
+  } else if (state.localMap) {
+    const position = projectLatLng(extent);
+    if (!position) return;
+    const circle = makeSvgElement('circle', {
+      cx: position.x, cy: position.y, r: Math.max(14, extent.radius / 1000 * PX_PER_KM),
+      fill: 'none', stroke: '#55dce8', 'stroke-width': 2, 'stroke-dasharray': '3 7'
+    });
+    circle.appendChild(makeSvgElement('title')).textContent = text;
+    state.localMap.observationExtentLayer.appendChild(circle);
+  }
+}
+
 function renderObservations(data) {
+  renderObservationExtent(data);
   const measured = measuredPoints(data.points);
   state.observationLayer?.clearLayers();
   if (state.localMap) state.localMap.observationLayer.innerHTML = '';
@@ -897,6 +930,7 @@ function loadMap() {
   state.locationLayer = L.layerGroup().addTo(state.leafletMap);
   state.leafletMap.createPane('observationPane').style.zIndex = 450;
   state.observationLayer = L.layerGroup().addTo(state.leafletMap);
+  state.observationExtentLayer = L.layerGroup().addTo(state.leafletMap);
   renderLeafletObservationNetwork();
   state.quakeHighlight = createQuakeHighlight({ map: state.leafletMap, L, document });
   const cities = [['札幌',43.0618,141.3545],['釧路',42.985,144.382],['青森',40.8246,140.74],['仙台',38.2682,140.8694],['新潟',37.9161,139.0364],['東京',35.6762,139.6503],['名古屋',35.1815,136.9066],['大阪',34.6937,135.5023],['広島',34.3853,132.4553],['高知',33.5597,133.5311],['福岡',33.5904,130.4017],['鹿児島',31.5966,130.5571],['那覇',26.2124,127.6809]];

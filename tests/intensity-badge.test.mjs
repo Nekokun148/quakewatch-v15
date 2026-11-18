@@ -25,7 +25,7 @@ test('map badges use reported numeric intensities and verified coordinates only'
     state: { observationLayer: layer }, window: { L }, measuredPoints,
     scaleText: value => ({ 10: '1', 45: '5弱' })[value],
     escapeHtml: value => value, displayObservationTime: value => value,
-    renderObservationRegions() {}, updateDiagnostics() {}, document: {}
+    renderObservationExtent() {}, renderObservationRegions() {}, updateDiagnostics() {}, document: {}
   });
   vm.runInContext(source.slice(source.indexOf('function renderObservations('), source.indexOf('const quakeHistory =')), context);
   context.renderObservations({
