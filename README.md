@@ -70,7 +70,7 @@ Google Maps APIは使用しません。地図背景はNatural Earthの公開ド�
 
 ## 緊急地震速報と警報音
 
-警報音は初期状態でOFFです。公開版はWeb Audioで生成する約3.2秒の高低二音を交互に繰り返す警報音を使います。ONへの切り替えだけでは音を鳴らさず、新しく受信した対象の速報または利用者の「警報音テスト」操作で1回再生します。利用者指定の `nc239566` MP3は作者・公開利用条件が未確認のため、公開リポジトリ、公開ビルド、Service Workerのキャッシュへ含めません。別のローカル作業コピーの指定MP3は変更していません。
+警報音は初期状態でOFFです。公開版はオリジナルの約3.6秒の警報チャイムを使います。上昇・下降する音に不協和の倍音と短い残響を重ね、二音のフレーズを4回繰り返します。ONへの切り替えだけでは音を鳴らさず、新しく受信した対象の速報または利用者の「警報音テスト」操作で1回再生します。利用者指定の `nc239566` MP3は作者・公開利用条件が未確認のため、公開リポジトリ、公開ビルド、Service Workerのキャッシュへ含めません。別のローカル作業コピーの指定MP3は変更していません。
 
 ゲイン上限は0.14です。スピーカーによって聞こえる大きさは異なります。同一報の重複・過去履歴・訓練・取消は鳴らさず、予報から警報への更新や最大震度上昇は再通知します。取消時とOFF時は再生を停止します。ブラウザの再生制限、消音、スピーカーの状態によって実際には聞こえないことがあるため、利用者の操作でテストしてください。公式の緊急地震速報チャイムとして提供するものではありません。
 
@@ -170,7 +170,7 @@ APIキーや独自のシークレットは不要です。公開先のリポジ�
 2. GitHubの **Settings > Pages > Build and deployment > Source** を **GitHub Actions** にします。
 3. デフォルトブランチへ反映するか、Actionsの **Deploy QuakeWatch to GitHub Pages** を手動実行します。
 
-ワークフローはテスト後に `node scripts/build.mjs` を実行し、許可リストの静的ファイルだけの `dist/` を公開します。指定MP3、DMDATAのローカル認証・キー保存コード、共有サーバーの実装・秘密、テスト、開発スクリプト、環境ファイルは公開用ビルドへ含めません。標準のGitHub Pagesデプロイ権限を使用し、APIキーを発行しません。[GitHubの公式手順](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)も参照できます。
+ワークフローはテスト後に `node scripts/build.mjs` を実行し、許可リストの静的ファイルだけの `dist/` を公開します。利用者指定MP3、DMDATAのローカル認証・キー保存コード、共有サーバーの実装・秘密、テスト、開発スクリプト、環境ファイルは公開用ビルドへ含めません。標準のGitHub Pagesデプロイ権限を使用し、APIキーを発行しません。[GitHubの公式手順](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)も参照できます。
 
 **GitHub Pagesだけでは強震モニタの中継サーバーを実行できません。** `workers/strong-motion.mjs` をCloudflare Workersの `quakewatch-v15-relay` として公開し、Pagesのオリジン `https://nekokun148.github.io` からのCORSを許可しています。取得先は防災科研の時刻JSONと既知のGIF画像に固定し、任意のURL、他サイトからのブラウザ利用、リダイレクト、異常画像を拒否します。画像は改変しません。現在の取得元までの通信はHTTPのため、この部分をHTTPSだと説明しません。
 

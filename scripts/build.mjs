@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PUBLIC_FILES = [
+  'audio/eew-chime.wav',
   'js/trem-rts.js',
   'js/cloud-voicevox.js',
   'js/quake-highlight.js',

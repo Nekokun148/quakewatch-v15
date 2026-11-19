@@ -87,7 +87,7 @@ topbar.addEventListener('keydown', event => {
 });
 const scaleText = s => ({ 10:'1', 20:'2', 30:'3', 40:'4', 45:'5弱', 50:'5強', 55:'6弱', 60:'6強', 70:'7' })[Number(s)] ?? '不明';
 const receiveEEW = createEEWTracker();
-const alarm = createAlarmController({ soundUrl: null, onStatus(info) {
+const alarm = createAlarmController({ soundUrl: new URL('../audio/eew-chime.wav', import.meta.url).href, onStatus(info) {
   $('alarmToggle').checked = info.enabled;
   $('alarmToggle').disabled = !info.supported;
   $('alarmTest').disabled = !info.supported;

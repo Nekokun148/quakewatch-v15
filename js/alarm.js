@@ -40,7 +40,7 @@ export function createAlarmController({ environment = window, onStatus = () => {
     } catch {
       if (episode !== generation) return;
       assetPhase = 'error';
-      assetWarning = '指定MP3を読み込めません。既存の警報音を使用します。';
+      assetWarning = '警報音ファイルを読み込めません。既存の警報音を使用します。';
     } finally {
       environment.clearTimeout(timer);
       if (loadController === controller) loadController = null;
@@ -146,7 +146,7 @@ export function createAlarmController({ environment = window, onStatus = () => {
       if (useFile) {
         buffer = null;
         assetPhase = 'error';
-        assetWarning = '指定MP3を再生できません。既存の警報音を使用します。';
+        assetWarning = '警報音ファイルを再生できません。既存の警報音を使用します。';
         return play({ onComplete });
       }
       enabled = false;

@@ -15,8 +15,8 @@ test('public release preserves the requested name and existing PWA identity', as
   for (const field of ['id', 'start_url', 'scope']) assert.equal(manifest[field], './');
 });
 
-test('public release excludes private saved credentials and audio while shipping personal-key input', async () => {
-  assert.ok(PUBLIC_FILES.every(file => !file.includes('/local/') && !file.startsWith('audio/')));
+test('public release excludes private saved credentials and user audio while allowing the original alarm asset', async () => {
+  assert.ok(PUBLIC_FILES.every(file => !file.includes('/local/') && (!file.startsWith('audio/') || file === 'audio/eew-chime.wav')));
   const app = await readFile(new URL('js/app.js', root), 'utf8');
   assert.doesNotMatch(app, /\/local\/|qwDmdataKey|eew-alarm\.mp3/);
   assert.match(app, /import \{ mountDmdata \} from '\.\/dmdata-ui\.js'/);
@@ -27,7 +27,7 @@ test('public release excludes private saved credentials and audio while shipping
   assert.doesNotMatch(receiver + ui, /localStorage|sessionStorage|indexedDB|qwDmdataKey|console\./);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v68-public/);
+  assert.match(sw, /unified-map-v69-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);

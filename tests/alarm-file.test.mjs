@@ -330,9 +330,9 @@ test('MP3 source creation or playback failure falls back once and preserves comp
   });
 });
 
-test('the public app uses the original generated alarm without fetching unverified audio', async () => {
+test('the public app uses the original generated WAV and excludes the private MP3', async () => {
   const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /createAlarmController\(\{ soundUrl: null/);
+  assert.match(app, /createAlarmController\(\{ soundUrl: new URL\('\.\.\/audio\/eew-chime\.wav'/);
   assert.doesNotMatch(app, /new URL\('\.\.\/audio\/eew-alarm\.mp3'/);
   assert.match(app, /qwAlarmAsset = info\.assetPhase/);
 });
