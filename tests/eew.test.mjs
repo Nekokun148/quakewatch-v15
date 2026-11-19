@@ -91,31 +91,29 @@ function alarmHarness(resume) {
   return { alarm, tones, gains, statuses };
 }
 
-test('alarm requires activation and plays bounded rising triplets without raising the gain ceiling', async () => {
+test('alarm requires activation and plays bounded alternating pulses with smooth attack and release', async () => {
   const h = alarmHarness(); assert.equal(h.alarm.play(), false);
   assert.equal(await h.alarm.enable(), true); assert.equal(h.alarm.play(), true);
   assert.equal(h.statuses.at(-1).played, 1);
   const tone = h.tones[0], gain = h.gains[0].gain;
-  assert.equal(tone.type, 'sawtooth');
+  assert.equal(tone.type, 'square');
   assert.equal(tone.starts.length, 1);
   assert.equal(tone.stops.length, 1);
   assert.ok(Math.abs(tone.starts[0] - 10.02) < 1e-9);
-  assert.ok(Math.abs(tone.stops[0] - tone.starts[0] - 2.55) < 1e-9);
-  assert.equal(tone.frequency.events.length, 18);
-  assert.equal(gain.events.length, 36);
-  for (let i = 0; i < 9; i++) {
-    const at = tone.starts[0] + Math.floor(i / 3) * 0.85 + (i % 3) * 0.22;
-    assert.deepEqual(tone.frequency.events.slice(i * 2, i * 2 + 2), [
-      { method: 'set', value: 780, at }, { method: 'ramp', value: 1480, at: at + 0.14 }
-    ]);
+  assert.ok(Math.abs(tone.stops[0] - tone.starts[0] - 3.2) < 1e-9);
+  assert.equal(tone.frequency.events.length, 16);
+  assert.equal(gain.events.length, 64);
+  for (let i = 0; i < 16; i++) {
+    const at = tone.starts[0] + Math.floor(i / 4) * 0.8 + (i % 4) * 0.16;
+    assert.deepEqual(tone.frequency.events[i], { method: 'set', value: i % 2 === 0 ? 1320 : 880, at });
     assert.deepEqual(gain.events.slice(i * 4, i * 4 + 4), [
       { method: 'set', value: 0, at },
-      { method: 'ramp', value: 0.14, at: at + 0.012 },
-      { method: 'set', value: 0.14, at: at + 0.065 },
-      { method: 'ramp', value: 0, at: at + 0.18 }
+      { method: 'ramp', value: 0.10, at: at + 0.008 },
+      { method: 'set', value: 0.10, at: at + 0.075 },
+      { method: 'ramp', value: 0, at: at + 0.13 }
     ]);
   }
-  assert.ok(gain.events.every(event => event.value >= 0 && event.value <= 0.16));
+  assert.ok(gain.events.every(event => event.value >= 0 && event.value <= 0.10));
   assert.ok(gain.events.at(-1).at < tone.stops[0]);
   h.tones[0].onended(); assert.equal(h.statuses.at(-1).phase, 'armed');
   assert.equal(tone.disconnected, true); assert.equal(h.gains[0].disconnected, true);
@@ -125,7 +123,8 @@ test('alarm requires activation and plays bounded rising triplets without raisin
 test('a new alert replaces the previous sound and late cleanup cannot end the new alert', async () => {
   const h = alarmHarness();
   await h.alarm.enable(); h.alarm.play(); h.alarm.play();
-  assert.deepEqual(h.tones[0].stops, [12.57, undefined]);
+  assert.ok(Math.abs(h.tones[0].stops[0] - 13.22) < 1e-9);
+  assert.equal(h.tones[0].stops[1], undefined);
   assert.equal(h.statuses.at(-1).played, 2);
   h.tones[0].onended();
   assert.equal(h.tones[0].disconnected, true);

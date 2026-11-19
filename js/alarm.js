@@ -110,17 +110,16 @@ export function createAlarmController({ environment = window, onStatus = () => {
         gain.gain.setValueAtTime(0.14, start + Math.max(buffer.duration / 2, buffer.duration - 0.02));
         gain.gain.linearRampToValueAtTime(0, start + buffer.duration);
       } else {
-        tone.type = 'sawtooth';
-        // Three triplets of rising chirps; silence between pulses leaves room for speech.
-        for (let group = 0; group < 3; group++) {
-          for (let pulse = 0; pulse < 3; pulse++) {
-            const at = start + group * 0.85 + pulse * 0.22;
-            tone.frequency.setValueAtTime(780, at);
-            tone.frequency.linearRampToValueAtTime(1480, at + 0.14);
+        tone.type = 'square';
+        // Alternating high/low pulses with brief gaps and smooth attack/release.
+        for (let group = 0; group < 4; group++) {
+          for (let pulse = 0; pulse < 4; pulse++) {
+            const at = start + group * 0.8 + pulse * 0.16;
+            tone.frequency.setValueAtTime(pulse % 2 === 0 ? 1320 : 880, at);
             gain.gain.setValueAtTime(0, at);
-            gain.gain.linearRampToValueAtTime(0.14, at + 0.012);
-            gain.gain.setValueAtTime(0.14, at + 0.065);
-            gain.gain.linearRampToValueAtTime(0, at + 0.18);
+            gain.gain.linearRampToValueAtTime(0.10, at + 0.008);
+            gain.gain.setValueAtTime(0.10, at + 0.075);
+            gain.gain.linearRampToValueAtTime(0, at + 0.13);
           }
         }
       }
@@ -135,7 +134,7 @@ export function createAlarmController({ environment = window, onStatus = () => {
         }
       };
       tone.start(start);
-      if (!useFile) tone.stop(start + 2.55);
+      if (!useFile) tone.stop(start + 3.2);
       played++;
       phase = 'playing';
       report();

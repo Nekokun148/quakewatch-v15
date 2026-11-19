@@ -284,8 +284,8 @@ test('MP3 failures visibly fall back to the original tone without disabling aler
     assert.match(h.status().assetWarning, /既存の警報音/);
     assert.equal(h.alarm.play(), true);
     assert.equal(h.files.length, 0);
-    assert.equal(h.tones[0].type, 'sawtooth');
-    assert.deepEqual(h.tones[0].stops, [12.57]);
+    assert.equal(h.tones[0].type, 'square');
+    assert.ok(Math.abs(h.tones[0].stops[0] - 13.22) < 1e-9);
     assert.equal(h.timers.size, 0);
   });
 });
