@@ -3,21 +3,22 @@ import { fileURLToPath } from 'node:url';
 
 export function generateEewChime() {
   const rate = 22050;
-  const samples = new Float64Array(rate * 3.6);
-  const duration = .26;
-  for (let group = 0; group < 4; group++) {
-    for (let note = 0; note < 2; note++) {
-      const start = .04 + group * .86 + note * .34;
-      const low = note === 0 ? 920 : 1160;
-      const high = note === 0 ? 1320 : 740;
-      for (let i = 0; i < Math.floor(duration * rate); i++) {
-        const t = i / rate;
-        const phase = 2 * Math.PI * (low * t + (high - low) * t * t / (2 * duration));
-        const envelope = Math.min(1, t / .008, (duration - t) / .035) * Math.exp(-2.5 * t / duration);
-        const value = envelope * (.5 * Math.sin(phase) + .23 * Math.sin(phase * Math.SQRT2) + .1 * Math.sin(phase * 2));
-        for (const [delay, gain] of [[0, 1], [.09, .16], [.18, .08]]) {
-          const index = Math.round((start + delay) * rate) + i;
-          if (index < samples.length) samples[index] += value * gain;
+  const samples = new Float64Array(rate * 3);
+  const duration = .58;
+  // Two bell-like chords form a pair, with a pause before repeating the pair.
+  for (let pair = 0; pair < 2; pair++) {
+    for (let chord = 0; chord < 2; chord++) {
+      const root = chord === 0 ? 523.25 : 493.88;
+      for (let note = 0; note < 3; note++) {
+        const frequency = root * [1, 1.25, 1.5][note];
+        const start = .04 + pair * 1.35 + chord * .48 + note * .055;
+        for (let i = 0; i < Math.floor(duration * rate); i++) {
+          const t = i / rate;
+          const phase = 2 * Math.PI * frequency * t;
+          const envelope = Math.min(1, t / .004, (duration - t) / .06) * Math.exp(-4 * t / duration);
+          const value = envelope * (.5 * Math.sin(phase) + .24 * Math.sin(phase * 2) + .08 * Math.sin(phase * 3));
+          const index = Math.round(start * rate) + i;
+          if (index < samples.length) samples[index] += value;
         }
       }
     }

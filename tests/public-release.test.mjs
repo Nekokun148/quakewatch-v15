@@ -12,6 +12,10 @@ test('public release preserves the requested name and existing PWA identity', as
   assert.match(html, /<h1>QuakeWatch ver15<\/h1>/);
   assert.equal(manifest.name, 'QuakeWatch ver15');
   assert.equal(manifest.short_name, 'QuakeWatch ver15');
+  const metadata = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
+  assert.match(metadata.version, /^\d+\.\d+\.\d+$/);
+  assert.ok(html.includes(`aria-label="バージョン">v${metadata.version}</span>`));
+  assert.ok(html.includes(`バージョン ${metadata.version} / 更新日`));
   for (const field of ['id', 'start_url', 'scope']) assert.equal(manifest[field], './');
 });
 
@@ -27,7 +31,7 @@ test('public release excludes private saved credentials and user audio while all
   assert.doesNotMatch(receiver + ui, /localStorage|sessionStorage|indexedDB|qwDmdataKey|console\./);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v69-public/);
+  assert.match(sw, /unified-map-v70-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);

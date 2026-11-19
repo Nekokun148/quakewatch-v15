@@ -13,7 +13,7 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
   const rate = wav.readUInt32LE(24);
   assert.equal(rate, 22050);
   assert.equal(wav.readUInt16LE(34), 16);
-  assert.equal(wav.readUInt32LE(40) / 2 / rate, 3.6);
+  assert.equal(wav.readUInt32LE(40) / 2 / rate, 3);
   let peak = 0, squares = 0;
   for (let offset = 44; offset < wav.length; offset += 2) {
     const sample = wav.readInt16LE(offset) / 32767;

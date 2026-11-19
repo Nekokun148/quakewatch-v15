@@ -59,6 +59,8 @@ button:disabled {
 }
 .current-time { display: block; margin-top: 3px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; color: #c2eadc; }
 .app-brand { min-width: 0; overflow-wrap: anywhere; }
+.app-version { color: #c7dbed; font-size: 12px; font-variant-numeric: tabular-nums; }
+.version-details { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .header-tools { display: flex; align-items: center; gap: 16px; }
 .audio-summary { display: grid; gap: 3px; font-size: 11px; color: #b8bdc7; white-space: nowrap; }
 .audio-summary [data-enabled="true"] { color: #94e4bb; }
