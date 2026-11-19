@@ -785,3 +785,5 @@ button:focus-visible, summary:focus-visible, select:focus-visible, a:focus-visib
   line-height: 1.5;
   pointer-events: none;
 }
+
+#monitorStatus[data-phase="maintenance"] { color: #ffd38a; font-weight: 700; }

@@ -22,6 +22,63 @@ function harness(fetcher) {
   return { controller, intervals, frames, states, calls, environment, timers };
 }
 
+test('explicit maintenance pauses for a minute and automatically recovers with a fresh image', async () => {
+  let clock = now, maintenance = true;
+  const h = harness(async () => maintenance
+    ? new Response(JSON.stringify({ maintenance: true }), {
+      status: 503, headers: { 'Content-Type': 'application/json' }
+    })
+    : { ok: true, json: async () => ({ ...snapshot, observedAt: new Date(clock).toISOString() }) });
+  h.environment.Date.now = () => clock;
+  h.controller.start('intensity');
+  await flush();
+  assert.equal(h.states.at(-1).phase, 'maintenance');
+  assert.match(h.states.at(-1).text, /メンテナンス中/);
+  await h.controller.tick();
+  assert.equal(h.calls.length, 1);
+  clock += 60000;
+  maintenance = false;
+  await h.controller.tick();
+  assert.equal(h.states.at(-1).phase, 'live');
+  assert.equal(h.frames.length, 1);
+  h.controller.stop();
+});
+
+test('current official maintenance notice explains a 502 but expires the next day', async () => {
+  let clock = Date.parse('2026-11-19T18:00:00+09:00');
+  const h = harness(async () => ({ ok: false, status: 502 }));
+  h.environment.Date.now = () => clock;
+  h.controller.start('intensity');
+  await flush();
+  assert.equal(h.states.at(-1).phase, 'maintenance');
+  assert.match(h.states.at(-1).text, /防災科研11\/19発表/);
+  clock = Date.parse('2026-11-20T00:00:01+09:00');
+  await h.controller.tick();
+  assert.equal(h.states.at(-1).phase, 'error');
+  assert.match(h.states.at(-1).text, /HTTP 502/);
+  h.controller.stop();
+});
+
+test('an unconfirmed 503 outside the announcement date remains a communication error', async () => {
+  const h = harness(async () => new Response(JSON.stringify({ error: 'unavailable' }), {
+    status: 503, headers: { 'Content-Type': 'application/json' }
+  }));
+  h.controller.start('intensity');
+  await flush();
+  assert.equal(h.states.at(-1).phase, 'error');
+  assert.match(h.states.at(-1).text, /HTTP 503/);
+  h.controller.stop();
+});
+
+test('stale images during announced maintenance are not labelled as updating live', async () => {
+  const h = harness();
+  h.environment.Date.now = () => Date.parse('2026-11-19T18:00:00+09:00');
+  h.controller.start('intensity');
+  await flush();
+  assert.equal(h.states.at(-1).phase, 'maintenance');
+  h.controller.stop();
+});
+
 test('decoded image reaches the map callback and failed rendering retries the same timestamp', async () => {
   const h = harness();
   h.controller.start('intensity'); await flush();

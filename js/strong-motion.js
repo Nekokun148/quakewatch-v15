@@ -1,5 +1,9 @@
 export const MONITOR_INTERVAL = 1000;
 const METRICS = ['intensity', 'acceleration'];
+// NIED's 2026-11-19 announcement has no stated end time.
+// Use this notice only on its publication date, rather than treating old news as current.
+const MAINTENANCE_NOTICE_START = Date.parse('2026-11-19T00:00:00+09:00');
+const MAINTENANCE_NOTICE_END = Date.parse('2026-11-20T00:00:00+09:00');
 
 export function createStrongMotionController({
   apiBase, environment = window, fetcher = fetch,
@@ -16,6 +20,13 @@ export function createStrongMotionController({
   let lastStamp = '';
   let retryAt = 0;
   const now = () => environment.Date?.now() ?? Date.now();
+  const hasCurrentMaintenanceNotice = () => now() >= MAINTENANCE_NOTICE_START && now() < MAINTENANCE_NOTICE_END;
+  function reportMaintenance(announced = false) {
+    retryAt = now() + 60000;
+    onStatus('maintenance', announced
+      ? 'メンテナンス中（防災科研11/19発表）・60秒後に自動再接続'
+      : 'メンテナンス中・60秒後に自動再接続');
+  }
 
   function loadImage(url, signal) {
     return new Promise((resolve, reject) => {
@@ -63,10 +74,16 @@ export function createStrongMotionController({
         return;
       }
       httpStatus = response.status;
+      if (response.status === 503 && response.headers?.get('Content-Type')?.includes('application/json')) {
+        const error = await response.json();
+        if (episode !== generation || currentRequest.signal.aborted) return;
+        if (error?.maintenance === true) { reportMaintenance(); return; }
+      }
       if (!response.ok) throw new Error('Source unavailable');
       stage = 'format';
       const data = await response.json();
       if (episode !== generation || currentRequest.signal.aborted) return;
+      if (data?.maintenance === true) { reportMaintenance(); return; }
       const observed = Date.parse(data.observedAt);
       if (!/^20\d{12}$/.test(data.timestamp || '') || !Number.isFinite(observed)) throw new Error('Invalid observation');
       const image = new URL(data.image, base);
@@ -83,10 +100,18 @@ export function createStrongMotionController({
       }
       if (episode === generation) {
         const age = Math.abs((environment.Date?.now() ?? Date.now()) - observed);
+        if (age > 5000 && hasCurrentMaintenanceNotice()) {
+          reportMaintenance(true);
+          return;
+        }
         onStatus(age > 5000 ? 'delayed' : 'live', age > 5000 ? '画像の配信が遅れています' : '1秒間隔で更新中');
       }
     } catch {
       if (episode === generation) {
+        if (stage === 'metadata' && [502, 503].includes(httpStatus) && hasCurrentMaintenanceNotice()) {
+          reportMaintenance(true);
+          return;
+        }
         const reason = currentRequest.signal.aborted ? '強震モニタの受信が5秒以内に完了しませんでした'
           : stage === 'metadata' ? '強震モニタ中継の時刻情報を取得できません'
           : stage === 'format' ? '強震モニタ中継の応答形式を確認できません'

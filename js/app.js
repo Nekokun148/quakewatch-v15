@@ -1123,9 +1123,10 @@ const strongMotion = createStrongMotionController({
   onStatus(phase, text) {
     if ($('monitorStatus').textContent !== text) $('monitorStatus').textContent = text;
     $('monitorStatus').dataset.phase = phase;
+    $('monitorMaintenanceLink').hidden = phase !== 'maintenance';
     document.body.dataset.qwMonitor = phase;
     $('monitorDisplay').dataset.phase = phase;
-    if (['loading', 'error', 'unavailable', 'delayed'].includes(phase)) {
+    if (['loading', 'error', 'unavailable', 'delayed', 'maintenance'].includes(phase)) {
       monitorChanges.reset();
       $('monitorChangeStatus').textContent = '画像色の変化：取得・比較待機 / 地震・震源未確定';
       $('monitorChangedStations').replaceChildren();
