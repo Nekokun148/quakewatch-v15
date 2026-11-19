@@ -8,26 +8,34 @@ export function generateEewChime() {
   const samples = new Float64Array(Math.round(rate * 3.2 * pace));
   const dry = new Float64Array(samples.length);
   const duration = .9 * pace;
-  // A fast five-note upward rake, including the minor seventh and sharp ninth.
-  // The second strike rises a semitone rather than resolving to a major triad.
-  // This is synthesized electric-piano-like timbre, not a sampled NHK recording.
-  const voicing = [60, 64, 70, 75, 79];
+  // The published score voices the first chord G4, C5, E5, Bb5, Eb6,
+  // with a semitone rise for the second chord (JCSS 2022 P1-038, figure 1).
+  // Keep the faster cadence, with a pitched piano-like attack rather than FM bells.
+  // This is a new synthesis, not a sampled NHK recording.
+  const voicing = [67, 72, 76, 82, 87];
+  const partialLevels = [1, .42, .24, .12, .075, .035, .018, .01];
+  const noteLevels = [.82, .91, 1.02, 1.08, .94];
   for (let pair = 0; pair < 2; pair++) {
     for (let chord = 0; chord < 2; chord++) {
       for (let note = 0; note < voicing.length; note++) {
         const frequency = 440 * 2 ** ((voicing[note] + chord - 69) / 12);
-        const start = (.025 + pair * 1.42 + chord * .63 + note * .019) * pace;
+        const start = (.025 + pair * 1.42 + chord * .63 + note * .026) * pace;
         for (let i = 0; i < Math.floor(duration * rate); i++) {
           const t = i / rate;
           const envelopeTime = t / pace;
-          const phase = 2 * Math.PI * frequency * t;
           const attack = Math.min(1, envelopeTime / .0025);
           const release = Math.min(1, (duration - t) / (.08 * pace));
-          const body = Math.exp(-envelopeTime / .245) * (.57 * Math.sin(phase) + .12 * Math.sin(phase * 2));
-          const brightness = Math.exp(-envelopeTime / .105) * (.23 * Math.sin(phase * 3) + .10 * Math.sin(phase * 4) + .04 * Math.sin(phase * 5));
-          // The transient decays rapidly, leaving a short, clear pitched tail.
-          const tine = .19 * Math.exp(-envelopeTime / .045) * Math.sin(phase + 1.8 * Math.exp(-envelopeTime / .025) * Math.sin(phase * 2));
-          const value = attack * release * (body + brightness + tine);
+          let strings = 0;
+          for (let partial = 1; partial <= partialLevels.length; partial++) {
+            const partialFrequency = frequency * partial * Math.sqrt(1 + .00008 * partial * partial);
+            if (partialFrequency >= rate / 2) continue;
+            const phase = 2 * Math.PI * partialFrequency * t;
+            const decay = Math.exp(-envelopeTime / (.26 / (1 + .36 * (partial - 1))));
+            // A second, subtly detuned string gives weight without a metallic FM sweep.
+            const stringPair = .78 * Math.sin(phase) + .22 * Math.sin(phase * 1.0009);
+            strings += partialLevels[partial - 1] * decay * stringPair;
+          }
+          const value = attack * release * noteLevels[note] * strings;
           const index = Math.round(start * rate) + i;
           if (index < dry.length) dry[index] += value;
         }
@@ -38,7 +46,9 @@ export function generateEewChime() {
   for (let i = 0; i < samples.length; i++) {
     const reflection1 = dry[i - Math.round(rate * .047 * pace)] || 0;
     const reflection2 = dry[i - Math.round(rate * .083 * pace)] || 0;
-    samples[i] = Math.tanh(1.2 * (dry[i] + .12 * reflection1 + .045 * reflection2));
+    // Fade the last reflection before speech takes over, without an abrupt cut.
+    const tailFade = Math.max(0, Math.min(1, (3.1 * pace - i / rate) / (.06 * pace)));
+    samples[i] = Math.tanh(1.2 * (dry[i] + .12 * reflection1 + .045 * reflection2)) * tailFade;
   }
   let peak = 0;
   for (const value of samples) peak = Math.max(peak, Math.abs(value));

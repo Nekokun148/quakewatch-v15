@@ -47,11 +47,11 @@ test('warning chime preserves dissonant color, rising second strike, and separat
     }
     return real * real + imaginary * imaginary;
   }
-  // Bb4 and Eb5 are audible chord tones, rather than a plain C major triad.
-  for (const frequency of [466.164, 622.254]) {
+  // Check the score's actual register and voicing, not just the chord's name.
+  for (const frequency of [391.995, 523.251, 659.255, 932.328, 1244.508]) {
     assert.ok(spectrum(frequency, .119, .289) > 4 * spectrum(frequency * 2 ** (1 / 12), .119, .289));
   }
-  assert.ok(spectrum(277.183, .646, .816) > 4 * spectrum(261.626, .646, .816));
+  assert.ok(spectrum(415.305, .646, .816) > 4 * spectrum(391.995, .646, .816));
   for (const start of [.02125, .55675, 1.22825, 1.76375]) {
     assert.ok(energy(start + .068, start + .1955) > 8 * energy(start + .3825, start + .5015));
   }

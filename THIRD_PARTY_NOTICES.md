@@ -91,6 +91,10 @@ The generator is included in this repository to reproduce the asset.
 Version 15.0.71 uses a dissonant upward arpeggio, a semitone rise between
 strikes, and a short electric-piano-like transient. The timbre and timing
 are synthesized for QuakeWatch; it is not the official NHK sound asset.
+Version 15.0.73 corrects the register and voicing against figure 1 in
+Shiozaki and Shiina, JCSS 2022 P1-038, and uses synthesized decaying string
+partials instead of the previous FM transient. No source audio is sampled.
+Score reference: https://jcss.gr.jp/meetings/jcss2022/proceedings/pdf/JCSS2022_P1-038.pdf
 
 ## User-Supplied Alarm Sound (nc239566)
 
