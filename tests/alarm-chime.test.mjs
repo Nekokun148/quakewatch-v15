@@ -13,7 +13,7 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
   const rate = wav.readUInt32LE(24);
   assert.equal(rate, 22050);
   assert.equal(wav.readUInt16LE(34), 16);
-  assert.equal(wav.readUInt32LE(40) / 2 / rate, 3.2);
+  assert.equal(wav.readUInt32LE(40) / 2 / rate, 2.72);
   let peak = 0, squares = 0;
   for (let offset = 44; offset < wav.length; offset += 2) {
     const sample = wav.readInt16LE(offset) / 32767;
@@ -49,11 +49,11 @@ test('warning chime preserves dissonant color, rising second strike, and separat
   }
   // Bb4 and Eb5 are audible chord tones, rather than a plain C major triad.
   for (const frequency of [466.164, 622.254]) {
-    assert.ok(spectrum(frequency, .14, .34) > 4 * spectrum(frequency * 2 ** (1 / 12), .14, .34));
+    assert.ok(spectrum(frequency, .119, .289) > 4 * spectrum(frequency * 2 ** (1 / 12), .119, .289));
   }
-  assert.ok(spectrum(277.183, .76, .96) > 4 * spectrum(261.626, .76, .96));
-  for (const start of [.025, .655, 1.445, 2.075]) {
-    assert.ok(energy(start + .08, start + .23) > 8 * energy(start + .45, start + .59));
+  assert.ok(spectrum(277.183, .646, .816) > 4 * spectrum(261.626, .646, .816));
+  for (const start of [.02125, .55675, 1.22825, 1.76375]) {
+    assert.ok(energy(start + .068, start + .1955) > 8 * energy(start + .3825, start + .5015));
   }
-  assert.ok(energy(3.1, 3.2) < 1e-8, 'leave silence before handing over to speech');
+  assert.ok(energy(2.635, 2.72) < 1e-8, 'leave silence before handing over to speech');
 });
