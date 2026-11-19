@@ -115,7 +115,7 @@ export function createTaiwanFeed({
       if (episode !== generation) return;
       if ([400, 401, 403, 404, 405].includes(error.status)) {
         enabled = false; onItems([]);
-        status('unavailable', '台湾RSSの中継は未対応・受信停止');
+        status('unavailable', `台湾RSS中継が利用できません（HTTP ${error.status}）・受信未確認。許可はON/OFFできます。`);
         return;
       }
       delay = Math.min(TAIWAN_INTERVAL * 2 ** Math.min(failures++, 4), 900000);

@@ -18,6 +18,7 @@ import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
 import { createWolfxFeed } from './wolfx.js';
 import { animateWaves, WAVE_LIFETIME } from './waves.js';
 import { mountTaiwan } from './taiwan-ui.js';
+import { mountTrem } from './trem-rts.js';
 
 const state = {
   ws: null,
@@ -1176,6 +1177,41 @@ monitorMappingReady = loadMonitorMapping().catch(() => {
 });
 document.body.dataset.qwMapView = 'unified';
 selectMonitorMetric('intensity');
+let tremLayer;
+const tremCircles = new Map();
+mountTrem({
+  onFrame(frame) {
+    if (!frame) {
+      tremLayer?.clearLayers();
+      tremCircles.clear();
+      return;
+    }
+    if (!state.leafletMap || !window.L) return;
+    tremLayer ||= window.L.layerGroup().addTo(state.leafletMap);
+    const visible = new Set(frame.points.map(point => point.id));
+    for (const [id, record] of tremCircles) {
+      if (!visible.has(id)) { tremLayer.removeLayer(record.layer); tremCircles.delete(id); }
+    }
+    for (const point of frame.points) {
+      let record = tremCircles.get(point.id);
+      if (!record) {
+        record = { point, time: frame.time };
+        record.layer = window.L.circleMarker([point.latitude, point.longitude], {
+          radius: 3, color: '#c5f6ff', weight: 1, fillColor: '#239cae', fillOpacity: .9
+        }).bindTooltip(() => {
+          const current = record.point;
+          const pga = current.pga == null ? '' : ` / PGA ${current.pga} Gal`;
+          return escapeHtml(`TREM-Net ${current.id} / 台湾RTS指標 ${current.intensity.toFixed(1)}${pga} / ${displayObservationTime(new Date(record.time).toISOString())} JST`);
+        }).addTo(tremLayer);
+        tremCircles.set(point.id, record);
+      }
+      record.point = point;
+      record.time = frame.time;
+    }
+  }
+});
+$('showTaiwan').addEventListener('click', () => state.leafletMap?.setView([23.7, 121], 7));
+$('showJapan').addEventListener('click', fitJapanView);
 let autoLocation = true;
 try { autoLocation = localStorage.getItem('qwLocationEnabled') !== 'false'; } catch {}
 if (autoLocation) locationControl.start();

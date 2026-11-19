@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PUBLIC_FILES = [
+  'js/trem-rts.js',
   'js/cloud-voicevox.js',
   'js/quake-highlight.js',
   'js/monitor-highlights.js',

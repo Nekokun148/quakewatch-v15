@@ -197,6 +197,23 @@ test('Taiwan UI starts unchecked, renders text rather than HTML, clears on OFF a
   assert.equal(h.counts.start, 2);
 });
 
+test('an unavailable RSS relay does not undo the user permission switch', () => {
+  const h = uiHarness();
+  const toggle = h.nodes.get('taiwanConsent');
+  toggle.checked = true;
+  toggle.handlers.get('change')();
+  h.options.onStatus({ enabled: false, phase: 'unavailable', text: 'HTTP 404' });
+  assert.equal(toggle.checked, true);
+  assert.equal(h.nodes.get('taiwanStatus').textContent, 'HTTP 404');
+  toggle.checked = false;
+  toggle.handlers.get('change')();
+  assert.equal(toggle.checked, false);
+  assert.equal(h.counts.stop, 1);
+  toggle.checked = true;
+  toggle.handlers.get('change')();
+  assert.equal(h.counts.start, 2);
+});
+
 test('the CWA relay is lazy, keeps RSS bytes unchanged, and coalesces clients for one minute', async () => {
   let clock = 100000, calls = 0;
   const relay = createTaiwanRssRelay({ now: () => clock, fetcher: async (url, options) => {

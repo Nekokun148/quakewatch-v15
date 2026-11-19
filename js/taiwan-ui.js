@@ -26,7 +26,7 @@ export function mountTaiwan({ environment = window, createFeed = createTaiwanFee
     onStatus(info) {
       display.textContent = info.text;
       section.dataset.phase = info.phase;
-      if (!info.enabled) toggle.checked = false;
+      if (info.phase === 'off') toggle.checked = false;
     }
   });
   toggle.addEventListener('change', () => {

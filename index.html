@@ -162,7 +162,7 @@
 
       <section id="taiwanReports" class="card taiwan-reports" aria-labelledby="taiwanHeading">
         <h2 id="taiwanHeading">台湾の地震情報</h2>
-        <label class="alarm-toggle"><input id="taiwanConsent" type="checkbox" aria-describedby="taiwanSource">台湾情報の受信を許可</label>
+        <label class="alarm-toggle"><input id="taiwanConsent" type="checkbox" aria-describedby="taiwanSource">台湾の公式RSS受信を許可（CWA）</label>
         <p id="taiwanSource" class="muted">出典：台湾 中央氣象署（CWA）／公式RSSの見出しのみ・EEWではありません</p>
         <p id="taiwanStatus" class="muted" role="status" aria-live="polite">未許可・未接続</p>
         <ul id="taiwanItems" class="taiwan-items"></ul>
@@ -176,6 +176,17 @@
         <p class="muted"><a href="https://wolfx.jp/docs/open-api/" target="_blank" rel="noopener noreferrer">Wolfx</a>：非公式の参考情報・YDITS障害時の代替</p>
       </section>
       </details>
+
+      <section class="card" aria-labelledby="tremHeading">
+        <h2 id="tremHeading">台湾リアルタイム観測（TREM-Net）</h2>
+        <label class="alarm-toggle"><input id="tremConsent" type="checkbox" aria-describedby="tremNotice">TREM RTSの受信を許可</label>
+        <p id="tremNotice" class="muted">ONの間、ExpTechの観測点一覧とRTSストリームへ接続します。台湾方式の震度指標と加速度を表示します。</p>
+        <p id="tremStatus" class="muted" role="status" aria-live="polite">TREM RTS OFF</p>
+        <button id="showTaiwan" type="button">台湾を表示</button>
+        <button id="showJapan" type="button">日本全国を表示</button>
+        <ul id="tremStations" class="taiwan-items"></ul>
+        <p class="muted"><a href="https://exptech.dev/trem" target="_blank" rel="noopener noreferrer">出典：ExpTech TREM-Net</a></p>
+      </section>
 
       <details class="card monitor-change-panel">
         <summary>画像色の変化（地震未確定）</summary>
