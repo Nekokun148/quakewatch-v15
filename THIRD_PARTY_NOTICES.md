@@ -102,6 +102,9 @@ Version 15.0.75 uses the user-provided nc354471 WAV only as an analysis referenc
 for note spacing, attack, and decay. Two ascending arpeggios are synthesized with
 65 ms note spacing and 350 ms chord spacing, at 48 kHz. No bytes or recorded
 samples from that WAV are included in the public asset or repository.
+Version 15.0.76 repeats the 1.6-second cycle exactly twice and adds quiet stereo
+early reflections around a centered direct signal. The final pause is preserved
+for the speech handoff. Mixing remains linear, including when downmixed to mono.
 
 ## User-Supplied Alarm Sound (nc239566)
 
