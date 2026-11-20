@@ -11,16 +11,16 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
   assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
   assert.equal(wav.readUInt16LE(22), 1);
   const rate = wav.readUInt32LE(24);
-  assert.equal(rate, 22050);
+  assert.equal(rate, 44100);
   assert.equal(wav.readUInt16LE(34), 16);
-  assert.equal(wav.readUInt32LE(40) / 2 / rate, 2.72);
+  assert.equal(wav.readUInt32LE(40) / 2 / rate, 1.92);
   let peak = 0, squares = 0;
   for (let offset = 44; offset < wav.length; offset += 2) {
     const sample = wav.readInt16LE(offset) / 32767;
     peak = Math.max(peak, Math.abs(sample));
     squares += sample * sample;
   }
-  assert.ok(peak > .79 && peak <= .801);
+  assert.ok(peak > .619 && peak <= .621);
   assert.ok(Math.sqrt(squares / ((wav.length - 44) / 2)) > .05);
   assert.equal(wav.readInt16LE(44), 0);
   assert.equal(wav.readInt16LE(wav.length - 2), 0);
@@ -49,11 +49,18 @@ test('warning chime preserves dissonant color, rising second strike, and separat
   }
   // Check the score's actual register and voicing, not just the chord's name.
   for (const frequency of [391.995, 523.251, 659.255, 932.328, 1244.508]) {
-    assert.ok(spectrum(frequency, .119, .289) > 4 * spectrum(frequency * 2 ** (1 / 12), .119, .289));
+    assert.ok(spectrum(frequency, .084, .204) > 4 * spectrum(frequency * 2 ** (1 / 12), .084, .204));
   }
-  assert.ok(spectrum(415.305, .646, .816) > 4 * spectrum(391.995, .646, .816));
-  for (const start of [.02125, .55675, 1.22825, 1.76375]) {
-    assert.ok(energy(start + .068, start + .1955) > 8 * energy(start + .3825, start + .5015));
+  assert.ok(spectrum(415.305, .456, .576) > 4 * spectrum(391.995, .456, .576));
+  for (const start of [.015, .393, .867, 1.245]) {
+    assert.ok(energy(start + .048, start + .138) > 8 * energy(start + .27, start + .354));
   }
-  assert.ok(energy(2.635, 2.72) < 1e-8, 'leave silence before handing over to speech');
+  assert.ok(energy(1.86, 1.92) < 1e-8, 'leave silence before handing over to speech');
+  // A saturated chord previously created audible difference/mixing products
+  // below the lowest played note, despite having no full-scale PCM samples.
+  const fundamental = spectrum(391.995, .084, .204);
+  for (const frequency of [130.739, 260.739]) {
+    assert.ok(spectrum(frequency, .084, .204) / fundamental < 1e-4,
+      `unexpected nonlinear mixing product at ${frequency} Hz`);
+  }
 });

@@ -2,9 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 export function generateEewChime() {
-  const rate = 22050;
+  const rate = 44100;
   // Compress timing only: resynthesizing keeps the original note pitches.
-  const pace = .85;
+  const pace = .6;
   const samples = new Float64Array(Math.round(rate * 3.2 * pace));
   const dry = new Float64Array(samples.length);
   const duration = .9 * pace;
@@ -13,7 +13,7 @@ export function generateEewChime() {
   // Keep the faster cadence, with a pitched piano-like attack rather than FM bells.
   // This is a new synthesis, not a sampled NHK recording.
   const voicing = [67, 72, 76, 82, 87];
-  const partialLevels = [1, .42, .24, .12, .075, .035, .018, .01];
+  const partialLevels = [1, .28, .12, .065, .03, .015, .0075, .003];
   const noteLevels = [.82, .91, 1.02, 1.08, .94];
   for (let pair = 0; pair < 2; pair++) {
     for (let chord = 0; chord < 2; chord++) {
@@ -48,7 +48,9 @@ export function generateEewChime() {
     const reflection2 = dry[i - Math.round(rate * .083 * pace)] || 0;
     // Fade the last reflection before speech takes over, without an abrupt cut.
     const tailFade = Math.max(0, Math.min(1, (3.1 * pace - i / rate) / (.06 * pace)));
-    samples[i] = Math.tanh(1.2 * (dry[i] + .12 * reflection1 + .045 * reflection2)) * tailFade;
+    // Mix linearly: saturating the combined chord creates new intermodulation
+    // tones and aliases, even if the final PCM is normalized below full scale.
+    samples[i] = (dry[i] + .12 * reflection1 + .045 * reflection2) * tailFade;
   }
   let peak = 0;
   for (const value of samples) peak = Math.max(peak, Math.abs(value));
@@ -65,7 +67,8 @@ export function generateEewChime() {
   wav.writeUInt16LE(16, 34);
   wav.write('data', 36);
   wav.writeUInt32LE(samples.length * 2, 40);
-  for (let i = 0; i < samples.length; i++) wav.writeInt16LE(Math.round(samples[i] / peak * .8 * 32767), 44 + i * 2);
+  // Leave additional output headroom for small speakers and subsequent mixing.
+  for (let i = 0; i < samples.length; i++) wav.writeInt16LE(Math.round(samples[i] / peak * .62 * 32767), 44 + i * 2);
   return wav;
 }
 

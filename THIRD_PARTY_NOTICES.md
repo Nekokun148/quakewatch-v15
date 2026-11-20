@@ -95,6 +95,9 @@ Version 15.0.73 corrects the register and voicing against figure 1 in
 Shiozaki and Shiina, JCSS 2022 P1-038, and uses synthesized decaying string
 partials instead of the previous FM transient. No source audio is sampled.
 Score reference: https://jcss.gr.jp/meetings/jcss2022/proceedings/pdf/JCSS2022_P1-038.pdf
+Version 15.0.74 removes nonlinear saturation after chord mixing, reduces upper
+partials and output peak level, and resynthesizes at 44.1 kHz. Timing is shortened
+to 1.92 seconds without shifting the played pitches.
 
 ## User-Supplied Alarm Sound (nc239566)
 

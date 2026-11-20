@@ -31,7 +31,7 @@ test('public release excludes private saved credentials and user audio while all
   assert.doesNotMatch(receiver + ui, /localStorage|sessionStorage|indexedDB|qwDmdataKey|console\./);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v73-public/);
+  assert.match(sw, /unified-map-v74-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);
