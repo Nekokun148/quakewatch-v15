@@ -98,6 +98,10 @@ Score reference: https://jcss.gr.jp/meetings/jcss2022/proceedings/pdf/JCSS2022_P
 Version 15.0.74 removes nonlinear saturation after chord mixing, reduces upper
 partials and output peak level, and resynthesizes at 44.1 kHz. Timing is shortened
 to 1.92 seconds without shifting the played pitches.
+Version 15.0.75 uses the user-provided nc354471 WAV only as an analysis reference
+for note spacing, attack, and decay. Two ascending arpeggios are synthesized with
+65 ms note spacing and 350 ms chord spacing, at 48 kHz. No bytes or recorded
+samples from that WAV are included in the public asset or repository.
 
 ## User-Supplied Alarm Sound (nc239566)
 

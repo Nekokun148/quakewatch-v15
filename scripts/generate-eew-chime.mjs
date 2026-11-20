@@ -2,55 +2,48 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 export function generateEewChime() {
-  const rate = 44100;
-  // Compress timing only: resynthesizing keeps the original note pitches.
-  const pace = .6;
-  const samples = new Float64Array(Math.round(rate * 3.2 * pace));
+  const rate = 48000;
+  const samples = new Float64Array(Math.round(rate * 1.6));
   const dry = new Float64Array(samples.length);
-  const duration = .9 * pace;
+  const duration = .82;
   // The published score voices the first chord G4, C5, E5, Bb5, Eb6,
   // with a semitone rise for the second chord (JCSS 2022 P1-038, figure 1).
-  // Keep the faster cadence, with a pitched piano-like attack rather than FM bells.
+  // Reference nc354471: about 65 ms between notes and 350 ms between arpeggios.
   // This is a new synthesis, not a sampled NHK recording.
   const voicing = [67, 72, 76, 82, 87];
-  const partialLevels = [1, .28, .12, .065, .03, .015, .0075, .003];
-  const noteLevels = [.82, .91, 1.02, 1.08, .94];
-  for (let pair = 0; pair < 2; pair++) {
-    for (let chord = 0; chord < 2; chord++) {
+  // Frequency ratios, initial levels, and decay constants of a struck resonator.
+  // The reference's isolated G4 has short modes near 4.11 and 6.82 kHz.
+  const modes = [[1, 1, .20], [2, .28, .16], [5, .025, .09], [10.49, .30, .038], [17.4, .31, .028]];
+  const noteLevels = [.60, .83, 1, 1.12, 1.20];
+  for (let chord = 0; chord < 2; chord++) {
       for (let note = 0; note < voicing.length; note++) {
         const frequency = 440 * 2 ** ((voicing[note] + chord - 69) / 12);
-        const start = (.025 + pair * 1.42 + chord * .63 + note * .026) * pace;
+        const start = .015 + chord * .35 + note * .065;
         for (let i = 0; i < Math.floor(duration * rate); i++) {
           const t = i / rate;
-          const envelopeTime = t / pace;
-          const attack = Math.min(1, envelopeTime / .0025);
-          const release = Math.min(1, (duration - t) / (.08 * pace));
-          let strings = 0;
-          for (let partial = 1; partial <= partialLevels.length; partial++) {
-            const partialFrequency = frequency * partial * Math.sqrt(1 + .00008 * partial * partial);
-            if (partialFrequency >= rate / 2) continue;
-            const phase = 2 * Math.PI * partialFrequency * t;
-            const decay = Math.exp(-envelopeTime / (.26 / (1 + .36 * (partial - 1))));
-            // A second, subtly detuned string gives weight without a metallic FM sweep.
-            const stringPair = .78 * Math.sin(phase) + .22 * Math.sin(phase * 1.0009);
-            strings += partialLevels[partial - 1] * decay * stringPair;
+          const attack = Math.min(1, t / .004);
+          const release = Math.min(1, (duration - t) / .07);
+          let resonator = 0;
+          for (const [ratio, level, decay] of modes) {
+            const modeFrequency = frequency * ratio;
+            if (modeFrequency >= rate / 2) continue;
+            resonator += level * Math.exp(-t / decay) * Math.sin(2 * Math.PI * modeFrequency * t);
           }
-          const value = attack * release * noteLevels[note] * strings;
+          const value = attack * release * noteLevels[note] * resonator;
           const index = Math.round(start * rate) + i;
           if (index < dry.length) dry[index] += value;
         }
       }
-    }
   }
   // Short room reflections add weight without masking the pause or announcement.
   for (let i = 0; i < samples.length; i++) {
-    const reflection1 = dry[i - Math.round(rate * .047 * pace)] || 0;
-    const reflection2 = dry[i - Math.round(rate * .083 * pace)] || 0;
+    const reflection1 = dry[i - Math.round(rate * .03)] || 0;
+    const reflection2 = dry[i - Math.round(rate * .06)] || 0;
     // Fade the last reflection before speech takes over, without an abrupt cut.
-    const tailFade = Math.max(0, Math.min(1, (3.1 * pace - i / rate) / (.06 * pace)));
+    const tailFade = Math.max(0, Math.min(1, (1.55 - i / rate) / .05));
     // Mix linearly: saturating the combined chord creates new intermodulation
     // tones and aliases, even if the final PCM is normalized below full scale.
-    samples[i] = (dry[i] + .12 * reflection1 + .045 * reflection2) * tailFade;
+    samples[i] = (dry[i] + .08 * reflection1 + .025 * reflection2) * tailFade;
   }
   let peak = 0;
   for (const value of samples) peak = Math.max(peak, Math.abs(value));

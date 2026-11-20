@@ -11,9 +11,9 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
   assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
   assert.equal(wav.readUInt16LE(22), 1);
   const rate = wav.readUInt32LE(24);
-  assert.equal(rate, 44100);
+  assert.equal(rate, 48000);
   assert.equal(wav.readUInt16LE(34), 16);
-  assert.equal(wav.readUInt32LE(40) / 2 / rate, 1.92);
+  assert.equal(wav.readUInt32LE(40) / 2 / rate, 1.6);
   let peak = 0, squares = 0;
   for (let offset = 44; offset < wav.length; offset += 2) {
     const sample = wav.readInt16LE(offset) / 32767;
@@ -27,7 +27,7 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
   assert.ok(PUBLIC_FILES.includes('audio/eew-chime.wav'));
 });
 
-test('warning chime preserves dissonant color, rising second strike, and separated attacks', () => {
+test('warning chime preserves chord pitches, two stepped arpeggios, and a clean speech handoff', () => {
   const wav = generateEewChime();
   const rate = wav.readUInt32LE(24);
   const sample = index => wav.readInt16LE(44 + index * 2) / 32767;
@@ -49,18 +49,24 @@ test('warning chime preserves dissonant color, rising second strike, and separat
   }
   // Check the score's actual register and voicing, not just the chord's name.
   for (const frequency of [391.995, 523.251, 659.255, 932.328, 1244.508]) {
-    assert.ok(spectrum(frequency, .084, .204) > 4 * spectrum(frequency * 2 ** (1 / 12), .084, .204));
+    assert.ok(spectrum(frequency, .285, .345) > 4 * spectrum(frequency * 2 ** (1 / 12), .285, .345));
   }
-  assert.ok(spectrum(415.305, .456, .576) > 4 * spectrum(391.995, .456, .576));
-  for (const start of [.015, .393, .867, 1.245]) {
-    assert.ok(energy(start + .048, start + .138) > 8 * energy(start + .27, start + .354));
+  assert.ok(spectrum(415.305, .66, .72) > 4 * spectrum(391.995, .66, .72));
+  // Higher notes should enter in sequence, not collapse into a simultaneous chord.
+  assert.ok(spectrum(659.255, .085, .125) < .1 * spectrum(659.255, .165, .205));
+  assert.ok(spectrum(1244.508, .165, .205) < .1 * spectrum(1244.508, .295, .335));
+  // Short resonant attack modes measured in the reference's isolated first note.
+  const firstNote = spectrum(391.995, .025, .07);
+  for (const frequency of [4112.028, 6820.713]) {
+    const relativePower = spectrum(frequency, .025, .07) / firstNote;
+    assert.ok(relativePower > .002 && relativePower < .08, 'retain a short mallet-like attack');
   }
-  assert.ok(energy(1.86, 1.92) < 1e-8, 'leave silence before handing over to speech');
+  assert.ok(energy(1.55, 1.6) < 1e-8, 'leave silence before handing over to speech');
   // A saturated chord previously created audible difference/mixing products
   // below the lowest played note, despite having no full-scale PCM samples.
-  const fundamental = spectrum(391.995, .084, .204);
+  const fundamental = spectrum(391.995, .285, .345);
   for (const frequency of [130.739, 260.739]) {
-    assert.ok(spectrum(frequency, .084, .204) / fundamental < 1e-4,
+    assert.ok(spectrum(frequency, .285, .345) / fundamental < 1e-4,
       `unexpected nonlinear mixing product at ${frequency} Hz`);
   }
 });
