@@ -757,7 +757,7 @@ function handleEEW(d, options = {}) {
   $('eewCard').hidden = false;
   setEventColor($('eewCard'), info.cancelled ? -1 : info.maxScale);
   const maximum = `${info.maxScale === 0 ? '0' : scaleText(info.maxScale)}${info.maxAbove ? '以上' : ''}`;
-  $('eewDetails').innerHTML = `${d.source === 'YDITS' ? 'YDITS / ' : ''}${escapeHtml(info.stage)}<br>震源：<span class="event-location">${escapeHtml(h.name || '情報なし')}</span><br>発表：${escapeHtml(displayObservationTime(d.issue?.time || d.time))}<br>予想最大震度：<span class="forecast-scale">${info.cancelled ? '取消' : maximum}</span>${!info.cancelled && info.plum ? '<br>PLUM法による予想を含む' : ''}${e.assumed ? '<br>仮定震源要素・規模と深さは未確定' : ''}${d.unmatchedCancel ? '<br>取消の対象地震は未確認' : ''}`;
+  $('eewDetails').innerHTML = `${d.source === 'YDITS' ? 'YDITS / ' : ''}${escapeHtml(info.stage)}<br>${e.levelMethod ? '検知地域' : '震源'}：<span class="event-location">${escapeHtml(h.name || '情報なし')}</span><br>発表：${escapeHtml(displayObservationTime(d.issue?.time || d.time))}<br>予想最大震度：<span class="forecast-scale">${info.cancelled ? '取消' : maximum}</span>${!info.cancelled && info.plum ? '<br>PLUM法による予想を含む' : ''}${e.levelMethod ? '<br>レベル法・震源と発生時刻は未確定' : ''}${e.assumed ? '<br>仮定震源要素・規模と深さは未確定' : ''}${d.unmatchedCancel ? '<br>取消の対象地震は未確認' : ''}`;
   $('eewRegions').innerHTML = '';
   if (d.source === 'Wolfx') $('eewDetails').innerHTML = 'Wolfx / ' + $('eewDetails').innerHTML;
   if (d.source === 'DMDATA') $('eewDetails').innerHTML = 'DMDATA / ' + $('eewDetails').innerHTML;
@@ -784,18 +784,19 @@ function handleEEW(d, options = {}) {
     }
     $('eewWaveStatus').textContent = 'P/S表示：取消';
   } else {
-    const pos = findLatLng(h);
+    const pos = e.levelMethod ? null : findLatLng(h);
     addMarker(pos, `緊急地震速報 ${info.stage}`, 'eew');
-    if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || !parseReportTime(e.originTime || e.time) || info.plum || e.assumed) && !options.silent && !info.training) {
+    if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || !parseReportTime(e.originTime || e.time) || info.plum || e.assumed || e.levelMethod) && !options.silent && !info.training) {
       clearWaveTimers();
       state.waveLayer?.clearLayers();
       if (state.localMap) state.localMap.waveLayer.innerHTML = '';
     }
-    $('eewWaveStatus').textContent = info.plum ? 'P/S表示：PLUM・到達時刻未確定'
+    $('eewWaveStatus').textContent = e.levelMethod ? 'P/S表示：レベル法・震源と発生時刻は未確定'
+      : info.plum ? 'P/S表示：PLUM・到達時刻未確定'
       : e.assumed ? 'P/S表示：仮定震源要素・未確定'
       : !parseReportTime(e.originTime || e.time) ? 'P/S表示：発生時刻未受信'
       : !pos ? 'P/S表示：震源座標未受信' : 'P/S表示：受信震源からの簡易到達予測';
-    if (!options.silent && !info.training && pos && !info.plum && !e.assumed && parseReportTime(e.originTime || e.time)) startWaveAnimation(pos, e.originTime || e.time, h.depth);
+    if (!options.silent && !info.training && pos && !info.plum && !e.assumed && !e.levelMethod && parseReportTime(e.originTime || e.time)) startWaveAnimation(pos, e.originTime || e.time, h.depth);
   }
   const text = eewAnnouncement(d);
   rememberAnnouncement(text);

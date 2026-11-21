@@ -37,7 +37,9 @@ export function createEEWTracker() {
     const alias = `${data.source}/${info.eventId}/${info.training ? 'training' : 'normal'}`;
     const network = ['YDITS', 'Wolfx', 'DMDATA'].includes(data.source);
     const origin = parseReportTime(data.earthquake?.originTime || data.issue?.originTime);
-    const eventKey = network && origin ? `origin/${origin}/${info.training ? 'training' : 'normal'}` : aliases.get(alias) || `${info.eventId}/${info.training ? 'training' : 'normal'}`;
+    // Preserve a known provider event even when its origin time is refined or
+    // first becomes available after a level-method report.
+    const eventKey = aliases.get(alias) || (network && origin ? `origin/${origin}/${info.training ? 'training' : 'normal'}` : `${info.eventId}/${info.training ? 'training' : 'normal'}`);
     if (network) { aliases.set(alias, eventKey); if (aliases.size > 100) aliases.delete(aliases.keys().next().value); }
     const old = events.get(eventKey);
     const serial = Number(data.issue?.serial) || 0;

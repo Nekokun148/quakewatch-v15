@@ -1,6 +1,6 @@
 {
   "name":"realtime-earthquake-viewer-v15",
-  "version":"15.0.78",
+  "version":"15.0.79",
   "private":true,
   "type":"module",
   "scripts":{"start":"node scripts/serve.mjs", "build":"node scripts/build.mjs", "check":"node --check js/app.js", "test":"node --test tests/*.test.mjs"}

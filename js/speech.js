@@ -217,7 +217,8 @@ export function eewAnnouncement(data) {
   if (info.cancelled) return '緊急地震速報は取り消されました。';
   const h = data.earthquake?.hypocenter || {};
   const names = [...new Set((data.areas || []).filter(a => Number(a.scaleTo) >= 30).map(a => `${a.pref || ''}${a.name || ''}`).filter(Boolean))];
-  const source = h.name ? `震源は${h.name}。` : '';
+  const source = data.earthquake?.levelMethod ? 'レベル法による発表です。震源と発生時刻は未確定です。'
+    : h.name ? `震源は${h.name}。` : '';
   const areas = names.length ? `強い揺れが予測される地域は、${names.slice(0, 8).join('、')}${names.length > 8 ? `、ほか${names.length - 8}地域` : ''}です。` : '続報に注意してください。';
   return `緊急地震速報。${source}${info.stage}。${info.plum ? 'PLUM法による予想を含みます。' : ''}${areas}`;
 }

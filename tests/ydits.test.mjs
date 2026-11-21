@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { wolfxReport } from '../js/wolfx.js';
 import { parseReportTime } from '../js/observations.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -299,6 +300,26 @@ test('a report without an origin cannot use its issue time for forecast circles'
   });
   assert.equal(h.calls.waves.length, 0);
   assert.match(h.elements.get('eewWaveStatus').textContent, /発生時刻未受信/);
+});
+
+test('Wolfx level-method warnings stay visible and alert without inventing an origin or P/S circles', () => {
+  const raw = { type: 'jma_eew', EventID: 'TEST-LEVEL-ONLY', Serial: 1,
+    AnnouncedTime: new Date(initial).toISOString(), OriginTime: new Date(initial - 10000).toISOString(),
+    Issue: { Status: '通常' }, CodeType: '最大予測震度のみの緊急地震速報',
+    Hypocenter: 'TEST DETECTION AREA', Latitude: 41, Longitude: 143, Depth: 10, Magnitude: 0,
+    MaxIntensity: '6弱', WarnArea: [], isTraining: false, isAssumption: false, isWarn: true, isFinal: false, isCancel: false };
+  const report = wolfxReport(raw, initial).report;
+  const h = eewUi(); h.receive(report);
+  assert.equal(h.calls.waves.length, 0);
+  assert.equal(h.calls.alerts[0][1].sound, true);
+  assert.match(h.elements.get('eewDetails').innerHTML, /検知地域.*レベル法/);
+  assert.match(h.elements.get('eewWaveStatus').textContent, /レベル法.*未確定/);
+  assert.match(eewAnnouncement(report), /震源と発生時刻は未確定/);
+  assert.doesNotMatch(eewAnnouncement(report), /震源はTEST DETECTION AREA/);
+  h.receive(wolfxReport({ ...raw, Serial: 2, CodeType: 'Ｍ、最大予測震度及び主要動到達予測時刻の緊急地震速報',
+    Depth: 80, Magnitude: 7.4 }, initial).report);
+  assert.equal(h.calls.waves.length, 1);
+  assert.equal(h.calls.alerts[1][1].sound, false);
 });
 
 test('only explicit real coordinates allow P/S; assumed, PLUM and training reports do not create waves', () => {

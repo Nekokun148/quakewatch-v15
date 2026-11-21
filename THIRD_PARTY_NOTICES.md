@@ -1,5 +1,15 @@
 # Map Data
 
+## Wolfx Open API
+
+Wolfx is an unofficial data provider. QuakeWatch consumes its JMA EEW channel
+for end-user display and notifications. The parser was checked against the
+Open API documentation updated 2026-11-16 and WebSocket documentation updated
+2026-11-19, including level-method compatibility values and regional PLUM fields.
+Documentation: https://wolfx.jp/docs/open-api/
+WebSocket: https://wolfx.jp/docs/websocket/
+Terms: https://wolfx.jp/legal/terms/
+
 ## Lucide Settings Icon
 
 The settings-2 icon is from https://lucide.dev/ (ISC License).

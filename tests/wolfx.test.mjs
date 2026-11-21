@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { wolfxReport, createWolfxFeed, WOLFX_EEW_SOCKET } from '../js/wolfx.js';
-import { createEEWTracker } from '../js/eew.js';
+import { createEEWTracker, eewInfo } from '../js/eew.js';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
@@ -25,6 +25,66 @@ test('app starts fallback only after server 3 fails and closes it on YDITS recov
 
 // Synthetic fixtures only; never a current observed earthquake.
 const fixture = () => ({ type: 'jma_eew', EventID: 'TEST-ONLY', Serial: 1, AnnouncedTime: new Date().toISOString(), OriginTime: new Date(Date.now() - 10000).toISOString(), Issue: { Status: '通常' }, Hypocenter: 'TEST ONLY', Latitude: 41, Longitude: 143, Depth: 80, Magnitude: 7.4, MaxIntensity: '6弱', WarnArea: [], isTraining: false, isAssumption: false, isWarn: true, isFinal: false, isCancel: false });
+
+test('level-method compatibility values are not treated as a measured hypocenter or origin', () => {
+  const raw = { ...fixture(), CodeType: '最大予測震度のみの緊急地震速報', Depth: 10, Magnitude: 0 };
+  const { report } = wolfxReport(raw);
+  assert.equal(report.earthquake.levelMethod, true);
+  assert.equal(report.earthquake.assumed, false);
+  assert.equal(report.earthquake.originTime, undefined);
+  assert.equal(report.issue.originTime, undefined);
+  assert.equal(report.earthquake.detectionTime, raw.OriginTime);
+  assert.equal(report.earthquake.magnitude, null);
+  assert.equal(report.earthquake.hypocenter.depth, null);
+  assert.equal(report.earthquake.hypocenter.latitude, undefined);
+  assert.equal(eewInfo(report).plum, false);
+  assert.equal(eewInfo(report).maxScale, 55);
+  assert.doesNotThrow(() => wolfxReport({ ...raw, OriginTime: '不明' }));
+});
+
+test('explicit regional PLUM descriptions are preserved independently of isAssumption', () => {
+  const raw = { ...fixture(), WarnArea: [null,
+    { Chiiki: 'TEST PLUM AREA', Shindo1: '6弱', Shindo2: '5強', Time: '123456', Type: '警報', Arrive: 'PLUM法による予測' },
+    { Chiiki: 'TEST NORMAL AREA', Shindo1: '4', Shindo2: '3', Time: '//////', Type: '予報', Arrive: '既に主要動到達と推測' }] };
+  const { report } = wolfxReport(raw);
+  assert.equal(report.earthquake.assumed, false);
+  assert.equal(report.areas[0].isPlum, true);
+  assert.equal(report.areas[0].arrivalTimeText, '123456');
+  assert.equal(report.areas[0].forecastType, '警報');
+  assert.equal(report.areas[1].isPlum, false);
+  assert.equal(eewInfo(report).plum, true);
+  assert.equal(eewInfo(wolfxReport({ ...fixture(), isAssumption: true }).report).plum, false);
+});
+
+test('unknown numeric placeholders stay unknown and Magnitude is the authoritative field', () => {
+  const unknown = wolfxReport({ ...fixture(), Magnitude: 0, Depth: 0, Accuracy: { Depth: '不明' } }).report;
+  assert.equal(unknown.earthquake.magnitude, null);
+  assert.equal(unknown.earthquake.hypocenter.depth, null);
+  const shallow = wolfxReport({ ...fixture(), Depth: 0, Accuracy: { Depth: 'ごく浅い' }, Magunitude: 9 }).report;
+  assert.equal(shallow.earthquake.hypocenter.depth, 0);
+  assert.equal(shallow.earthquake.magnitude, 7.4);
+  assert.equal(wolfxReport({ ...fixture(), Magnitude: undefined, Magunitude: 9 }).report.earthquake.magnitude, null);
+});
+
+test('origin refinement for the same event does not replay an unchanged warning', () => {
+  const raw = { ...fixture(), CodeType: '最大予測震度のみの緊急地震速報' };
+  const receive = createEEWTracker();
+  assert.equal(receive(wolfxReport(raw).report).sound, true);
+  const refined = { ...raw, CodeType: 'Ｍ、最大予測震度及び主要動到達予測時刻の緊急地震速報', Serial: 2 };
+  assert.equal(receive(wolfxReport(refined).report).sound, false);
+  const stronger = { ...refined, Serial: 3, MaxIntensity: '6強' };
+  assert.equal(receive(wolfxReport(stronger).report).sound, true);
+  const cancel = { ...stronger, Serial: 4, isCancel: true, Issue: { Status: '取り消し' } };
+  assert.equal(wolfxReport(cancel).report.issue.originTime, undefined);
+  const result = receive(wolfxReport(cancel).report);
+  assert.equal(result.accepted, true);
+  assert.equal(result.sound, false);
+});
+
+test('malformed root values are rejected while malformed area entries cannot crash parsing', () => {
+  for (const value of [null, [], 'jma_eew', 1]) assert.throws(() => wolfxReport(value));
+  assert.deepEqual(wolfxReport({ ...fixture(), WarnArea: [null, {}, 3] }).report.areas, []);
+});
 test('Wolfx preserves received report values and rejects malformed data', () => {
   const data = fixture(), parsed = wolfxReport(data);
   assert.equal(parsed.report.earthquake.maxScale, 55);
@@ -126,4 +186,53 @@ test('failed sockets reconnect with bounded backoff and stale callbacks cannot r
   }
   assert.deepEqual(delays, [5000, 10000, 20000, 40000, 60000, 60000]);
   feed.stop(); assert.equal(timers.size, 0);
+});
+
+test('documented millisecond-string heartbeat keeps one socket alive and ignores invalid timestamps', () => {
+  const fixedNow = Date.now(), sockets = [], statuses = [], timers = new Map(); let id = 0;
+  class Socket {
+    constructor() { sockets.push(this); this.sent = []; }
+    send(value) { this.sent.push(value); }
+    close() { this.closed = true; this.onclose?.(); }
+  }
+  const feed = createWolfxFeed({ environment: { WebSocket: Socket, Date: { now: () => fixedNow },
+    setTimeout(fn, delay) { timers.set(++id, { fn, delay }); return id; }, clearTimeout(key) { timers.delete(key); } },
+    onStatus: status => statuses.push(status) });
+  feed.start(); const ws = sockets[0]; ws.onopen();
+  const send = data => ws.onmessage({ data: JSON.stringify(data) });
+  const timer = [...timers.keys()][0];
+  for (const timestamp of [null, [], {}, '', String(fixedNow - 100000), String(fixedNow + 100000)]) {
+    send({ type: 'heartbeat', timestamp });
+    assert.equal([...timers.keys()][0], timer);
+  }
+  send({ type: 'heartbeat', timestamp: String(fixedNow), ver: 1, id: 'TEST-ONLY' });
+  assert.deepEqual(ws.sent, ['query_jmaeew', 'ping']);
+  assert.equal(statuses.at(-1).phase, 'live');
+  assert.equal([...timers.values()][0].delay, 90000);
+  send({ type: 'pong', timestamp: String(fixedNow) });
+  assert.deepEqual(ws.sent, ['query_jmaeew', 'ping']);
+  for (const invalid of [null, [], true, 42]) assert.doesNotThrow(() => send(invalid));
+  assert.equal(statuses.at(-1).phase, 'error');
+  send({ type: 'heartbeat', timestamp: String(fixedNow) });
+  assert.equal(statuses.at(-1).phase, 'live');
+  feed.start(); assert.equal(sockets.length, 1);
+  feed.stop(); assert.equal(timers.size, 0);
+});
+
+test('synchronous socket failures and throwing close still use bounded retry and stop cleanly', () => {
+  for (const constructorFailure of [true, false]) {
+    const sockets = [], timers = new Map(); let id = 0;
+    class Socket {
+      constructor() { if (constructorFailure) throw new Error('TEST constructor failure'); sockets.push(this); }
+      close() { throw new Error('TEST close failure'); }
+    }
+    const feed = createWolfxFeed({ environment: { WebSocket: Socket,
+      setTimeout(fn, delay) { timers.set(++id, { fn, delay }); return id; }, clearTimeout(key) { timers.delete(key); } } });
+    assert.doesNotThrow(() => feed.start());
+    if (!constructorFailure) assert.doesNotThrow(() => sockets[0].onerror());
+    assert.equal(timers.size, 1);
+    assert.equal([...timers.values()][0].delay, 5000);
+    assert.doesNotThrow(() => feed.stop());
+    assert.equal(timers.size, 0);
+  }
 });
