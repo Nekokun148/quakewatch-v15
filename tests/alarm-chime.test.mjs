@@ -24,7 +24,7 @@ test('shipped chime matches its original synthesis and has bounded PCM levels an
     peak = Math.max(peak, Math.abs(sample));
     squares += sample * sample;
   }
-  assert.ok(peak > .619 && peak <= .621);
+  assert.ok(peak > .779 && peak <= .781);
   assert.ok(Math.sqrt(squares / ((wav.length - 44) / 2)) > .05);
   assert.equal(wav.readInt16LE(44), 0);
   assert.equal(wav.readInt16LE(wav.length - 2), 0);

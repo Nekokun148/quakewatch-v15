@@ -105,6 +105,8 @@ samples from that WAV are included in the public asset or repository.
 Version 15.0.76 repeats the 1.6-second cycle exactly twice and adds quiet stereo
 early reflections around a centered direct signal. The final pause is preserved
 for the speech handoff. Mixing remains linear, including when downmixed to mono.
+Version 15.0.77 raises the generated PCM peak from 0.62 to 0.78 and file playback
+gain from 0.14 to 0.20, retaining linear mixing and the existing attack/release.
 
 ## User-Supplied Alarm Sound (nc239566)
 

@@ -106,8 +106,8 @@ export function createAlarmController({ environment = window, onStatus = () => {
         tone.buffer = buffer;
         tone.loop = false;
         gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.14, start + Math.min(0.01, buffer.duration / 4));
-        gain.gain.setValueAtTime(0.14, start + Math.max(buffer.duration / 2, buffer.duration - 0.02));
+        gain.gain.linearRampToValueAtTime(0.20, start + Math.min(0.01, buffer.duration / 4));
+        gain.gain.setValueAtTime(0.20, start + Math.max(buffer.duration / 2, buffer.duration - 0.02));
         gain.gain.linearRampToValueAtTime(0, start + buffer.duration);
       } else {
         tone.type = 'square';

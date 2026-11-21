@@ -72,8 +72,8 @@ export function generateEewChime() {
   wav.writeUInt32LE(cycleBytes * repeats, 40);
   // Leave additional output headroom for small speakers and subsequent mixing.
   for (let i = 0; i < cycleFrames; i++) {
-    wav.writeInt16LE(Math.round(left[i] / peak * .62 * 32767), 44 + i * frameBytes);
-    wav.writeInt16LE(Math.round(right[i] / peak * .62 * 32767), 46 + i * frameBytes);
+    wav.writeInt16LE(Math.round(left[i] / peak * .78 * 32767), 44 + i * frameBytes);
+    wav.writeInt16LE(Math.round(right[i] / peak * .78 * 32767), 46 + i * frameBytes);
   }
   // Bake in exactly two cycles; the browser plays once and then hands off to speech.
   for (let repeat = 1; repeat < repeats; repeat++) {

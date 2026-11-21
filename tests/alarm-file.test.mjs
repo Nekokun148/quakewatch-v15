@@ -109,7 +109,8 @@ test('MP3 plays in full without looping and completion fires only at natural end
   assert.equal(h.tones.length, 0);
   assert.equal(h.status().phase, 'playing');
   assert.equal(h.status().played, 1);
-  assert.ok(events.every(event => event.value >= 0 && event.value <= 0.14));
+  assert.ok(events.every(event => event.value >= 0 && event.value <= 0.20));
+  assert.deepEqual(events.map(event => event.value), [0, 0.20, 0.20, 0]);
   assert.equal(events.at(-1).at, file.starts[0] + h.decoded.duration);
   assert.equal(events.at(-1).value, 0);
   assert.equal(completed, 0);
