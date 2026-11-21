@@ -179,7 +179,7 @@ test('caution is spoken once after natural alarm completion and before EEW detai
   h.announcer.announce('緊急地震速報。テスト詳細。', { sound: true });
   assert.equal(h.spoken.length, 0);
   h.tones[0].onended();
-  assert.equal(h.spoken[0].text, '強い揺れに警戒してください。');
+  assert.equal(h.spoken[0].text, '緊急地震速報です。強い揺れに警戒してください。');
   h.tones[0].onended();
   assert.equal(h.spoken.length, 1);
   h.finishSpeech();
@@ -247,5 +247,5 @@ test('alarm test without details produces only the requested caution after compl
   const h = announcerHarness(); await h.alarm.enable(); h.speech.enable();
   h.announcer.announce('', { sound: true });
   assert.equal(h.spoken.length, 0); h.tones[0].onended(); h.finishSpeech();
-  assert.deepEqual(h.spoken.map(utterance => utterance.text), ['強い揺れに警戒してください。']);
+  assert.deepEqual(h.spoken.map(utterance => utterance.text), ['緊急地震速報です。強い揺れに警戒してください。']);
 });

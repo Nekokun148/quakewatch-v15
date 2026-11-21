@@ -173,11 +173,16 @@ export function createSpeechController({ environment = window, onStatus = () => 
     playNext();
   }
 
-  function say(text, { interrupt = false, waitForCloud = false } = {}) {
+  function say(text, { interrupt = false, waitForCloud = false, combineOpeningSentences = false } = {}) {
     if (!enabled || !supported || !text) return false;
     if (interrupt) clearPlayback();
     lastText = String(text);
     const sentences = lastText.match(/[^。！？]+[。！？]?/gu) || [lastText];
+    // Keep the short two-sentence alarm introduction in a single utterance.
+    // In particular, cloud speech should not need a second immediate request.
+    if (combineOpeningSentences && sentences.length > 1) {
+      sentences.splice(0, 2, sentences[0] + sentences[1]);
+    }
     for (const sentence of sentences) {
       const characters = Array.from(sentence);
       for (let i = 0; i < characters.length; i += 120) queue.push({ text: characters.slice(i, i + 120).join(''), waitForCloud });

@@ -144,7 +144,7 @@ test('MP3 natural end precedes the caution and the latest EEW speech', async () 
   h.announcer.announce('第2報。');
   assert.equal(h.spoken.length, 0);
   h.files[0].onended();
-  assert.equal(h.spoken[0].text, '強い揺れに警戒してください。');
+  assert.equal(h.spoken[0].text, '緊急地震速報です。強い揺れに警戒してください。');
   h.files[0].onended();
   assert.equal(h.spoken.length, 1);
   h.finishSpeech();
@@ -325,7 +325,7 @@ test('MP3 source creation or playback failure falls back once and preserves comp
     assert.equal(h.spoken.length, 0);
     assert.equal(h.tones.length, 1);
     h.tones[0].onended();
-    assert.equal(h.spoken[0].text, '強い揺れに警戒してください。');
+    assert.equal(h.spoken[0].text, '緊急地震速報です。強い揺れに警戒してください。');
     h.finishSpeech();
     assert.equal(h.spoken[1].text, 'テスト速報。');
   });

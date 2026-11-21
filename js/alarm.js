@@ -169,7 +169,8 @@ export function createAlarmAnnouncer({ alarm, speech }) {
       if (alarm.play({ onComplete() {
         const latest = pending;
         pending = null;
-        if (latest !== null) speech.say(`強い揺れに警戒してください。${latest}`, { interrupt: true });
+        if (latest !== null) speech.say(`緊急地震速報です。強い揺れに警戒してください。${latest}`,
+          { interrupt: true, combineOpeningSentences: true });
         speech.release();
       } })) return true;
       pending = null;

@@ -376,7 +376,7 @@ test('alarm playback starts before any cloud synthesis and caution remains queue
   assert.equal(sounds, 1); assert.equal(h.requests.length, 1);
   ended(); await flush();
   assert.equal(h.requests[1].url, CLOUD_SYNTHESIS_URL);
-  assert.equal(new URLSearchParams(h.requests[1].options.body).get('text'), '強い揺れに警戒してください。');
+  assert.equal(new URLSearchParams(h.requests[1].options.body).get('text'), '緊急地震速報です。強い揺れに警戒してください。');
 });
 
 test('autoplay denial is not bypassed with browser speech', async () => {

@@ -31,7 +31,7 @@ test('public release excludes private saved credentials and user audio while all
   assert.doesNotMatch(receiver + ui, /localStorage|sessionStorage|indexedDB|qwDmdataKey|console\./);
   const sw = await readFile(new URL('sw.js', root), 'utf8');
   assert.doesNotMatch(sw, /\/local\/|eew-alarm\.mp3/);
-  assert.match(sw, /unified-map-v77-public/);
+  assert.match(sw, /unified-map-v78-public/);
   const ignore = await readFile(new URL('.gitignore', root), 'utf8');
   assert.match(ignore, /audio\/eew-alarm\.mp3/);
   assert.match(ignore, /js\/local\//);
@@ -78,7 +78,7 @@ test('public generated alarm completes before caution without loading any audio 
   assert.deepEqual(spoken, []);
   sources[0].onended();
   sources[0].onended();
-  assert.deepEqual(spoken, ['強い揺れに警戒してください。テスト速報。']);
+  assert.deepEqual(spoken, ['緊急地震速報です。強い揺れに警戒してください。テスト速報。']);
   assert.deepEqual(held, [true, false]);
   assert.equal(requests, 0);
 });
