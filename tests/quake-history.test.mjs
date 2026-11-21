@@ -27,7 +27,7 @@ test('history selection displays stored coordinates without replaying alert or c
   class Clock extends Date { static now() { return today; } }
   const ctx = vm.createContext({ state, Date: Clock, parseReportTime, $: get, document: { createElement: () => ({ addEventListener(type, fn) { this.click = fn; } }) },
     sameQuakeReport: (a,b) => a.earthquake.time === b.earthquake.time, displayObservationTime: v => v, scaleText: v => String(v),
-    clearWaveTimers() {}, findLatLng: h => h.latitude == null ? null : { lat: h.latitude, lng: h.longitude }, addMarker: (...args) => markers.push(args) });
+    clearWaveTimers() {}, focusEarthquake() {}, findLatLng: h => h.latitude == null ? null : { lat: h.latitude, lng: h.longitude }, addMarker: (...args) => markers.push(args) });
   vm.runInContext(source.slice(source.indexOf('const quakeHistory ='), source.indexOf('function handleQuake(')), ctx);
   const report = n => ({ earthquake: { time: new Date(today + n * 1000).toISOString(), maxScale: 20, hypocenter: { name: 'TEST ONLY', latitude: n, longitude: 140 } } });
   ctx.rememberQuake(report(1)); ctx.rememberQuake(report(2)); ctx.rememberQuake(report(2));

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import { wolfxReport } from '../js/wolfx.js';
+import { createEpicenterFocus } from '../js/epicenter-focus.js';
 import { parseReportTime } from '../js/observations.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -248,11 +249,13 @@ test('same report across failover/reconnect is delivered once and late/training 
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
 const handler = app.slice(app.indexOf('function handleEEW('), app.indexOf('function handleUserSensing('));
 function eewUi() {
-  const calls = { waves: [], cancels: 0, clears: 0, alerts: [], metrics: [] }, elements = new Map();
+  const calls = { waves: [], cancels: 0, clears: 0, alerts: [], metrics: [], focus: [] }, elements = new Map();
+  const focusEarthquake = createEpicenterFocus({ now: () => initial, getMap: () => ({ getZoom: () => 5,
+    setView: center => calls.focus.push(center) }) });
   const element = id => { if (!elements.has(id)) elements.set(id, { appendChild() {} }); return elements.get(id); };
   const state = { bannerTime: 0, waveLayer: { clearLayers() { calls.clears++; } } };
   const receiveEEW = createEEWTracker();
-  const context = vm.createContext({ state, $: element, document: { querySelector: element, createElement: () => ({}) },
+  const context = vm.createContext({ state, focusEarthquake, $: element, document: { querySelector: element, createElement: () => ({}) },
     receiveEEW: (data, options) => receiveEEW(data, { ...options, now: initial }),
     parseReportTime, setEventColor() {}, scaleText: value => value === 55 ? '6弱' : '不明',
     escapeHtml: value => String(value), displayObservationTime: value => value, addMarker() {},
@@ -279,6 +282,7 @@ test('YDITS warning updates UI and alarm without inventing P/S waves or region f
   h.receive(data);
   assert.equal(h.calls.alerts.length, 1); assert.equal(h.calls.alerts[0][1].sound, true);
   assert.equal(h.calls.waves.length, 0); assert.ok(h.calls.clears > 0);
+  assert.deepEqual(h.calls.focus, []);
   assert.match(h.elements.get('eewDetails').innerHTML, /YDITS.*6弱/);
   assert.match(h.elements.get('eewWaveStatus').textContent, /震源座標未受信/);
   assert.match(h.elements.get('headlineSub').textContent, /地域別予測未受信/);
@@ -314,12 +318,14 @@ test('Wolfx level-method warnings stay visible and alert without inventing an or
   assert.equal(h.calls.alerts[0][1].sound, true);
   assert.match(h.elements.get('eewDetails').innerHTML, /検知地域.*レベル法/);
   assert.match(h.elements.get('eewWaveStatus').textContent, /レベル法.*未確定/);
+  assert.deepEqual(h.calls.focus, []);
   assert.match(eewAnnouncement(report), /震源と発生時刻は未確定/);
   assert.doesNotMatch(eewAnnouncement(report), /震源はTEST DETECTION AREA/);
   h.receive(wolfxReport({ ...raw, Serial: 2, CodeType: 'Ｍ、最大予測震度及び主要動到達予測時刻の緊急地震速報',
     Depth: 80, Magnitude: 7.4 }, initial).report);
   assert.equal(h.calls.waves.length, 1);
   assert.equal(h.calls.alerts[1][1].sound, false);
+  assert.deepEqual(h.calls.focus, [[41, 143]]);
 });
 
 test('only explicit real coordinates allow P/S; assumed, PLUM and training reports do not create waves', () => {

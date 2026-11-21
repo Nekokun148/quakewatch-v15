@@ -16,6 +16,7 @@ import { createMonitorChangeTracker } from './monitor-changes.js';
 import { createQuakeHighlight } from './quake-highlight.js';
 import { createYditsFeed, createYditsEEWAdapter } from './ydits.js';
 import { createWolfxFeed } from './wolfx.js';
+import { createEpicenterFocus } from './epicenter-focus.js';
 import { animateWaves, WAVE_LIFETIME } from './waves.js';
 import { mountTaiwan } from './taiwan-ui.js';
 import { mountTrem } from './trem-rts.js';
@@ -114,6 +115,12 @@ const MAP_CENTER = { lat: 37.25, lng: 138.2 };
 const MAP_BOUNDS = { north: 46.8, south: 24.0, west: 122.0, east: 149.6 };
 const LOCAL_VIEWBOX = { width: 1000, height: 1000 };
 const PX_PER_KM = LOCAL_VIEWBOX.width / ((MAP_BOUNDS.east - MAP_BOUNDS.west) * 88);
+let preserveMapView = false;
+const moveToEpicenter = createEpicenterFocus({ getMap: () => state.leafletMap,
+  getLocalMap: () => state.localMap, project: projectLatLng, viewBox: LOCAL_VIEWBOX });
+function focusEarthquake(report, position, options) {
+  if (moveToEpicenter(report, position, options)) preserveMapView = true;
+}
 
 function showToast(text) {
   const t = $('toast');
@@ -692,6 +699,7 @@ function renderQuakeHistory() {
       state.waveLayer?.clearLayers();
       if (state.localMap) state.localMap.waveLayer.innerHTML = '';
       addMarker(findLatLng(h), `履歴：${h.name || '震源不明'}`, 'quake');
+      focusEarthquake(report, findLatLng(h), { manual: true });
       state.quakeHighlight?.clear();
       $('quakeWaveformHelp').hidden = false;
       $('quakeHistorySelection').textContent = `履歴表示：${displayObservationTime(q.time)} / ${h.name || '震源不明'} / M${h.magnitude ?? '-'} / 深さ${h.depth ?? '-'}km`;
@@ -734,6 +742,7 @@ function handleQuake(d, options = {}) {
   renderObservations(state.latestObservation);
   const pos = findLatLng(h);
   addMarker(pos, title, 'quake');
+  focusEarthquake(d, pos, options);
   state.quakeHighlight?.update(d, options);
   if ((!options.silent || options.animateWaves === true) && !sameReport) startWaveAnimation(pos, q.time, h.depth);
   const text = quakeAnnouncement(d, scaleText);
@@ -786,6 +795,7 @@ function handleEEW(d, options = {}) {
   } else {
     const pos = e.levelMethod ? null : findLatLng(h);
     addMarker(pos, `緊急地震速報 ${info.stage}`, 'eew');
+    focusEarthquake(d, pos, options);
     if (['YDITS', 'Wolfx', 'DMDATA'].includes(d.source) && (!pos || !parseReportTime(e.originTime || e.time) || info.plum || e.assumed || e.levelMethod) && !options.silent && !info.training) {
       clearWaveTimers();
       state.waveLayer?.clearLayers();
@@ -878,6 +888,8 @@ function onData(d, options = {}) {
 }
 
 function fitJapanView() {
+  preserveMapView = false;
+  state.localMap?.svg.setAttribute('viewBox', `0 0 ${LOCAL_VIEWBOX.width} ${LOCAL_VIEWBOX.height}`);
   const map = state.leafletMap;
   if (!map || $('map').hidden) return;
   const attributionHeight = document.querySelector('.leaflet-control-attribution')?.offsetHeight || 0;
@@ -941,7 +953,7 @@ function loadMap() {
     icon: L.divIcon({ className: 'city-label', html: escapeHtml(name), iconSize: [48, 16], iconAnchor: [24, 8] })
   }).addTo(state.leafletMap);
   fitJapanView();
-  state.leafletMap.on('resize', fitJapanView);
+  state.leafletMap.on('resize', () => { if (!preserveMapView) fitJapanView(); });
   updateDiagnostics();
 }
 
@@ -1211,7 +1223,7 @@ mountTrem({
     }
   }
 });
-$('showTaiwan').addEventListener('click', () => state.leafletMap?.setView([23.7, 121], 7));
+$('showTaiwan').addEventListener('click', () => { preserveMapView = true; state.leafletMap?.setView([23.7, 121], 7); });
 $('showJapan').addEventListener('click', fitJapanView);
 let autoLocation = true;
 try { autoLocation = localStorage.getItem('qwLocationEnabled') !== 'false'; } catch {}

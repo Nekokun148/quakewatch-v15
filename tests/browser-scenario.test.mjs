@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { createEpicenterFocus } from '../js/epicenter-focus.js';
 import { acceptsQuakeReport, sameQuakeReport, parseReportTime, selectObservationReport } from '../js/observations.js';
 
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
@@ -34,14 +35,16 @@ function scenario() {
 
 function receiver() {
   const state = { seen: new Set(), latestQuake: null, latestObservation: null, bannerTime: 0 };
-  const calls = { waves: [], speech: [], toast: [], metrics: [] };
+  const calls = { waves: [], speech: [], toast: [], metrics: [], focus: [] };
+  const focusEarthquake = createEpicenterFocus({ getMap: () => ({ getZoom: () => 5,
+    setView: center => calls.focus.push(center) }) });
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {});
     return elements.get(id);
   };
   const context = vm.createContext({
-    state, $: element, document: { querySelector: element }, acceptsQuakeReport, sameQuakeReport, parseReportTime,
+    state, focusEarthquake, $: element, document: { querySelector: element }, acceptsQuakeReport, sameQuakeReport, parseReportTime,
     quakeReportTime: data => parseReportTime(data.issue?.time), selectObservationReport,
     scaleText: scale => scale === 55 ? '6弱' : String(scale), displayObservationTime: value => value,
     escapeHtml: value => String(value), setEventColor() {}, renderObservations() {}, addMarker() {},
@@ -106,10 +109,13 @@ test('new live quake selects real-time intensity once while history and display 
   h.receive(live, {});
   h.receive({ ...live, id: live.id + '-follow-up' }, {});
   assert.deepEqual(h.calls.metrics, ['intensity']);
+  assert.deepEqual(h.calls.focus, [[41, 143]]);
   const history = receiver();
   history.receive(live, { silent: true });
   assert.deepEqual(history.calls.metrics, []);
+  assert.deepEqual(history.calls.focus, []);
   const training = receiver();
   training.receive(data, options);
   assert.deepEqual(training.calls.metrics, []);
+  assert.deepEqual(training.calls.focus, []);
 });
