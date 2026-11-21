@@ -1,5 +1,10 @@
 # DMDATA APIキーの設定方法
 
+[DMDATA接続画面を開く](https://nekokun148.github.io/quakewatch-v15/#dmdataPersonal)
+と、APIキーの入力欄が開きます。自分の契約に合う配信区分を選んで「接続」を押してください。
+接続済みになった後は、DMDATAの緊急地震速報を優先して受信します。
+[公式API v2リファレンス](https://dmdata.jp/docs/reference/api/v2/)も参照できます。
+
 QuakeWatch ver15の「DMDATA（自分のAPIキー）」は、利用者が自分のDMDATA契約とAPIキーで公式APIへ直接接続する方式です。この直接接続で開発者のキー共有や予報データの再配信は行いません。別途準備する共有受信は警報・通常地震情報だけが対象で、予報は含めません。[共有サーバーの管理者向け手順](dmdata-shared-server.md)を参照してください。
 
 ## 友達へ共有するとき

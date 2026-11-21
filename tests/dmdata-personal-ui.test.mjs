@@ -49,6 +49,14 @@ test('personal-key form mounts empty without reading persistence or connecting o
   assert.doesNotMatch(h.section.innerHTML, /dmdataRemember|dmdataForget/);
 });
 
+test('DMDATA direct link opens the key form without automatically starting a subscription', () => {
+  const h = harness({ location: { origin: 'https://nekokun148.github.io', pathname: '/quakewatch-v15/', hash: '#dmdataPersonal' } });
+  assert.match(h.section.innerHTML, /<details open>/);
+  assert.match(h.section.innerHTML, /https:\/\/dmdata\.jp\/docs\/reference\/api\/v2\//);
+  assert.equal(h.starts.length, 0); assert.equal(h.storageReads(), 0);
+  assert.equal(h.element('dmdataKey').value, '');
+});
+
 test('only explicit submit starts one selected subscription and clears the input immediately', () => {
   const h = harness(); h.element('dmdataKey').value = fixtureKey;
   h.element('dmdataClass').value = 'both'; h.element('dmdataForm').fire('submit');

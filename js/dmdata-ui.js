@@ -5,7 +5,8 @@ export function mountDmdata({ onData, onStatus, environment = window, createFeed
   if (!dmdataAllowed(location)) return null;
   const section = document.createElement('section');
   section.className = 'card dmdata-panel'; section.id = 'dmdataPersonal';
-  section.innerHTML = `<details><summary>DMDATA（自分のAPIキー）</summary>
+  section.innerHTML = `<details${location.hash === '#dmdataPersonal' ? ' open' : ''}><summary>DMDATA（自分のAPIキー）</summary>
+    <p class="muted">契約に合う配信区分を選び、ご自身のAPIキーを入力して接続してください。接続後はDMDATAの速報を優先します。</p>
     <form id="dmdataForm" class="dmdata-form" autocomplete="off">
       <label for="dmdataKey">APIキー</label>
       <input id="dmdataKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" required aria-describedby="dmdataPrivacy">
@@ -17,11 +18,14 @@ export function mountDmdata({ onData, onStatus, environment = window, createFeed
     <nav class="dmdata-help" aria-label="DMDATAの設定ガイド">
       <a href="https://github.com/nekokun148/quakewatch-v15/blob/main/docs/dmdata-setup.md" target="_blank" rel="noopener noreferrer">APIキーの設定方法</a>
       <a href="https://manager.dmdata.jp/" target="_blank" rel="noopener noreferrer">DMDATA管理画面</a>
-      <a href="https://dmdata.jp/docs/reference/api/v2/socket.start/" target="_blank" rel="noopener noreferrer">公式API資料</a>
+      <a href="https://dmdata.jp/docs/reference/api/v2/" target="_blank" rel="noopener noreferrer">公式API v2資料</a>
     </nav>
     <p id="dmdataStatus" class="muted" role="status" aria-live="polite">DMDATA / 未接続</p>
   </details>`;
   document.getElementById('eewCard').after(section);
+  if (location.hash === '#dmdataPersonal') {
+    environment.requestAnimationFrame?.(() => section.scrollIntoView?.({ block: 'nearest' }));
+  }
   const form = section.querySelector('form'), input = section.querySelector('input'), select = section.querySelector('select');
   const connect = section.querySelector('#dmdataConnect'), disconnect = section.querySelector('#dmdataDisconnect');
   const display = section.querySelector('#dmdataStatus');

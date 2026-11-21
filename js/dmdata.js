@@ -78,7 +78,7 @@ export function createDmdataFeed({ environment = window, fetcher = fetch, decode
   const events = new Set();
   const classifications = () => mode === 'both' ? ['eew.forecast', 'eew.warning'] : [mode];
   const status = (phase, text) => onStatus({ phase, enabled, text: `DMDATA / ${text}` });
-  const clear = () => { environment.clearTimeout(retry); environment.clearTimeout(watchdog); abort?.abort(); abort = null; const old = ws; ws = null; old?.close(); };
+  const clear = () => { environment.clearTimeout(retry); environment.clearTimeout(watchdog); abort?.abort(); abort = null; const old = ws; ws = null; try { old?.close(); } catch {} };
   function stop() { enabled = false; generation++; clear(); key = ''; status('off', '未接続'); }
   async function connect() {
     if (!enabled) return;
@@ -98,16 +98,31 @@ export function createDmdataFeed({ environment = window, fetcher = fetch, decode
         headers: { Authorization: `Basic ${btoa(key + ':')}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ classifications: classifications(), types: mode === 'both' ? ['VXSE43', 'VXSE44', 'VXSE45'] : mode === 'eew.warning' ? ['VXSE43'] : ['VXSE44', 'VXSE45'], test: 'no', appName: 'QuakeWatch ver15', formatMode: 'json' }) });
       if (!current()) return;
-      if (!response.ok) { const code = response.status; fail(code === 401 ? '認証失敗' : code === 402 ? '対象区分の契約なし' : code === 403 ? '権限・接続元を確認' : code === 409 ? '同時接続数の上限' : code === 429 ? 'レート制限' : 'API接続失敗', [400, 401, 402, 403, 409].includes(code), code === 429 ? 60000 : 0); return; }
+      const apiFailure = code => {
+        const labels = { 400: 'API要求の形式を確認', 401: '認証失敗', 402: '対象区分の契約なし',
+          403: '権限・接続元を確認', 409: '同時接続数の上限', 429: 'レート制限' };
+        let wait = code === 429 ? 60000 : 0;
+        if (code === 429) {
+          const after = response.headers?.get('Retry-After');
+          const specified = typeof after === 'string' && /^\d+(?:\.\d+)?$/.test(after)
+            ? Number(after) * 1000 : typeof after === 'string' ? Date.parse(after) - Date.now() : 0;
+          if (Number.isFinite(specified)) wait = Math.max(wait, specified);
+          if (wait > 2147483647) { fail('レート制限・時間を置いて再接続してください', true); return; }
+        }
+        fail(labels[code] || 'API接続失敗', [400, 401, 402, 403, 409].includes(code), wait);
+      };
+      if (!response.ok) { apiFailure(response.status); return; }
       const info = await response.json(); if (!current()) return;
-      if (info.status !== 'ok' || JSON.stringify(info.websocket?.protocol) !== '["dmdata.v2"]') { fail('接続情報の形式不一致', true); return; }
+      if (info?.status === 'error') { apiFailure(Number.isInteger(info.error?.code) ? info.error.code : 503); return; }
+      if (info?.status !== 'ok' || JSON.stringify(info.websocket?.protocol) !== '["dmdata.v2"]') { fail('接続情報の形式不一致', true); return; }
       const url = dmdataSocketUrl(info.websocket.url);
       abort = null; ws = new environment.WebSocket(url, ['dmdata.v2']); watch(15000);
       const socket = ws; let queue = Promise.resolve(), started = false;
       socket.onmessage = event => {
         if (!current() || socket !== ws) return;
         let message;
-        try { if (typeof event.data !== 'string' || event.data.length > 2500000) throw new Error(); message = JSON.parse(event.data); }
+        try { if (typeof event.data !== 'string' || event.data.length > 2500000) throw new Error(); message = JSON.parse(event.data);
+          if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error(); }
         catch { status('invalid', '受信形式不一致'); return; }
         if (message.type === 'start') { if (!Array.isArray(message.classifications) || !classifications().every(value => message.classifications.includes(value)) || !time(message.time)) { fail('配信区分・開始情報不一致', true); return; } started = true; failures = 0; watch(150000); status('live', mode === 'both' ? '接続済み・予報と警報の速報待機' : '接続済み・速報待機'); return; }
         if (message.type === 'ping') { if (typeof message.pingId !== 'string' || message.pingId.length > 64) return;

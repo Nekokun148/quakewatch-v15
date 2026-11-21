@@ -137,6 +137,54 @@ test('429 backs off without alternate servers; stopped or replaced sessions cann
   assert.equal(h.timers.size, 1); assert.equal([...h.timers.values()][0].delay, 60000);
   h.feed.stop(); assert.equal(h.timers.size, 0);
 });
+
+test('API v2 standard JSON errors retain actionable status without exposing provider text', async () => {
+  for (const [code, label] of [[401, '認証失敗'], [402, '契約なし'], [403, '権限・接続元'], [409, '同時接続数']]) {
+    const h = harness({ ok: true, status: 200, json: async () => ({ status: 'error', error: { code, message: 'TEST-ONLY private provider text' } }) });
+    h.feed.start('TEST-ONLY'); await h.flush();
+    assert.match(h.statuses.at(-1).text, new RegExp(label));
+    assert.equal(h.statuses.at(-1).enabled, false);
+    assert.equal(h.timers.size, 0); assert.equal(h.sockets.length, 0);
+    assert.doesNotMatch(JSON.stringify(h.statuses), /TEST-ONLY|private provider text/);
+  }
+});
+
+test('HTTP and JSON rate limits respect Retry-After seconds and HTTP dates', async () => {
+  for (const jsonError of [true, false]) {
+    for (const after of ['120', new Date(Date.now() + 180000).toUTCString()]) {
+      const h = harness({ ok: jsonError, status: jsonError ? 200 : 429, headers: { get: () => after },
+        json: async () => ({ status: 'error', error: { code: 429 } }) });
+      h.feed.start('TEST-ONLY'); await h.flush();
+      assert.equal(h.timers.size, 1);
+      const wait = [...h.timers.values()][0].delay;
+      assert.ok(after === '120' ? wait === 120000 : wait >= 178000 && wait <= 180000);
+      assert.equal(h.calls.length, 1); assert.equal(h.sockets.length, 0);
+      h.feed.stop(); assert.equal(h.timers.size, 0);
+    }
+  }
+});
+
+test('invalid WebSocket root JSON cannot throw or prevent valid start and ping messages', async () => {
+  const h = harness(); h.feed.start('TEST-ONLY'); await h.flush();
+  for (const invalid of [null, [], true, 42]) {
+    assert.doesNotThrow(() => h.message(invalid));
+    assert.equal(h.statuses.at(-1).phase, 'invalid');
+  }
+  h.message({ type: 'start', classifications: ['eew.forecast'], time: new Date().toISOString() });
+  h.message({ type: 'ping', pingId: 'TEST-PING' });
+  assert.equal(h.statuses.at(-1).phase, 'live');
+  assert.deepEqual(h.sockets[0].sent, [{ type: 'pong', pingId: 'TEST-PING' }]);
+  h.feed.stop();
+});
+
+test('a close exception cannot keep a stopped subscription alive', async () => {
+  const h = harness(); h.feed.start('TEST-ONLY'); await h.flush();
+  h.sockets[0].close = () => { throw new Error('TEST close failure'); };
+  assert.doesNotThrow(() => h.feed.stop());
+  h.message({ type: 'start', classifications: ['eew.forecast'], time: new Date().toISOString() });
+  assert.equal(h.statuses.at(-1).phase, 'off');
+  assert.equal(h.timers.size, 0); assert.equal(h.calls.length, 1);
+});
 test('personal-key modules ship but local saved credentials remain excluded from Pages', async () => {
   assert.equal(PUBLIC_FILES.some(file => file.includes('local/')), false);
   assert.ok(PUBLIC_FILES.includes('js/dmdata.js')); assert.ok(PUBLIC_FILES.includes('js/dmdata-ui.js'));
